@@ -1,0 +1,41 @@
+# Versões centralizadas do projeto HP 12C Simulator.
+# Mantenha bumps mínimos e teste cada upgrade no CI antes de promover.
+
+[versions]
+# Toolchain
+kotlin              = "2.2.10"
+agp                 = "9.1.1"
+jvmTarget           = "17"
+
+# Android
+minSdk              = "24"    # Android 7.0 — ~99% dos aparelhos em 2026
+compileSdk          = "35"
+targetSdk           = "35"
+
+# Kotlin ecosystem
+kotlinxSerialization = "1.7.3"
+kotlinxCoroutines    = "1.9.0"
+
+# Android ecosystem
+androidxActivityCompose = "1.9.3"
+composeBom              = "2024.11.00"
+androidxCoreKtx         = "1.15.0"
+
+[libraries]
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
+kotlinx-coroutines-core    = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core",    version.ref = "kotlinxCoroutines" }
+
+androidx-core-ktx          = { module = "androidx.core:core-ktx",                    version.ref = "androidxCoreKtx" }
+androidx-activity-compose  = { module = "androidx.activity:activity-compose",        version.ref = "androidxActivityCompose" }
+androidx-compose-bom       = { module = "androidx.compose:compose-bom",              version.ref = "composeBom" }
+androidx-compose-ui        = { module = "androidx.compose.ui:ui" }
+androidx-compose-material3 = { module = "androidx.compose.material3:material3" }
+androidx-compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
+
+[plugins]
+kotlin-multiplatform  = { id = "org.jetbrains.kotlin.multiplatform",           version.ref = "kotlin" }
+kotlin-android        = { id = "org.jetbrains.kotlin.android",                 version.ref = "kotlin" }
+kotlin-serialization  = { id = "org.jetbrains.kotlin.plugin.serialization",    version.ref = "kotlin" }
+compose-compiler      = { id = "org.jetbrains.kotlin.plugin.compose",          version.ref = "kotlin" }
+android-application   = { id = "com.android.application",                      version.ref = "agp" }
+android-library       = { id = "com.android.library",                          version.ref = "agp" }

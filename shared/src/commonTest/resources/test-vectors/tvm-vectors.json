@@ -1,0 +1,196 @@
+{
+  "schema_version": "1.0",
+  "description": "Vetores de teste de TVM (Time Value of Money) extraídos dos PDFs oficiais. Cada vetor é a entrada canônica para CalculatorEngine.solveTvm(...). Convenção de sinais: entrada de caixa positiva, saída negativa, conforme HP12C. O campo 'expected' é string para comparação livre de erro de float; a engine formata sua saída conforme 'format' e compara como string.",
+  "sign_convention_note": "Quando um exemplo do manual digita '5000 CHS PV', o vetor registra PV: -5000. Quando exibe 'PMT = -549,00' no resultado, expected = '-549.00'.",
+  "vectors": [
+    {
+      "id": "tvm-001",
+      "source": "moretti, Cap. 4, Ex. 10, p. 30",
+      "description": "Montante de capital R$ 5.000 aplicado por 5 meses a 4% a.m. (juros compostos, sem PMT). Resolver FV.",
+      "inputs": { "n": 5, "i": 4, "PV": -5000, "PMT": 0, "FV": 0, "mode": "END" },
+      "solve_for": "FV",
+      "expected": "6083.26",
+      "format": "FIX 2"
+    },
+    {
+      "id": "tvm-002",
+      "source": "moretti, Cap. 4, Ex. 11, p. 31",
+      "description": "Empréstimo com pagamento único de R$ 2.000 em 24 meses a 4% a.m. Resolver PV.",
+      "inputs": { "n": 24, "i": 4, "PV": 0, "PMT": 0, "FV": -2000, "mode": "END" },
+      "solve_for": "PV",
+      "expected": "780.24",
+      "format": "FIX 2"
+    },
+    {
+      "id": "tvm-003",
+      "source": "moretti, Cap. 4, Ex. 12, p. 32-33",
+      "description": "Prazo para liquidar empréstimo: PV=4.278,43, FV=6.559,68, i=3,25% a.m. Valor exato ≈ 13,36 meses; HP12C arredonda n para cima → exibe 14.",
+      "inputs": { "n": 0, "i": 3.25, "PV": -4278.43, "PMT": 0, "FV": 6559.68, "mode": "END" },
+      "solve_for": "n",
+      "expected": "14",
+      "format": "FIX 0",
+      "notes": "A HP12C sempre arredonda n para o próximo inteiro. Para obter a parte fracionária exata o usuário pressiona RCL n FRAC 30 x → 11 dias. Valor exato interno: 13.36194504."
+    },
+    {
+      "id": "tvm-004",
+      "source": "moretti, Cap. 4, Ex. 13, p. 34-35",
+      "description": "Taxa de juros mensal: loja financia R$ 1.210,72 com pagamento de R$ 1.695,01 em 270 dias (9 meses). Resolver i. Display mostra 3,809358 (FIX 6).",
+      "inputs": { "n": 9, "i": 0, "PV": -1210.72, "PMT": 0, "FV": 1695.01, "mode": "END" },
+      "solve_for": "i",
+      "expected": "3.81",
+      "format": "FIX 2",
+      "notes": "Moretti apresenta resultado em FIX 2 como 3,81% a.m. Valor HP com FIX 6 = 3,809358."
+    },
+    {
+      "id": "tvm-005",
+      "source": "moretti, Cap. 6, Ex. 22, p. 60-61",
+      "description": "Financiamento quitado em 6 pagamentos mensais de R$ 1.500,00 (postecipado), taxa de 3,5% a.m. Resolver PV.",
+      "inputs": { "n": 6, "i": 3.5, "PV": 0, "PMT": -1500, "FV": 0, "mode": "END" },
+      "solve_for": "PV",
+      "expected": "7992.83",
+      "format": "FIX 2"
+    },
+    {
+      "id": "tvm-006",
+      "source": "moretti, Cap. 6, Ex. 23, p. 61-62",
+      "description": "Financiamento de veículo: PV=12.500 (valor à vista menos entrada), 36 parcelas mensais, taxa 2,7214% a.m. Resolver PMT (postecipado).",
+      "inputs": { "n": 36, "i": 2.7214, "PV": 12500, "PMT": 0, "FV": 0, "mode": "END" },
+      "solve_for": "PMT",
+      "expected": "-549.00",
+      "format": "FIX 2"
+    },
+    {
+      "id": "tvm-007",
+      "source": "moretti, Cap. 6, Ex. 24, p. 63-64",
+      "description": "Poupança: depósito de R$ 105,00 ao fim de cada mês durante 24 meses, taxa 1,50% a.m. Resolver FV.",
+      "inputs": { "n": 24, "i": 1.5, "PV": 0, "PMT": -105, "FV": 0, "mode": "END" },
+      "solve_for": "FV",
+      "expected": "3006.52",
+      "format": "FIX 2"
+    },
+    {
+      "id": "tvm-008",
+      "source": "moretti, Cap. 6, Ex. 25, p. 64-65",
+      "description": "Acúmulo de FV=5.000 em 7 depósitos mensais, taxa 4% a.m. (postecipado). Resolver PMT.",
+      "inputs": { "n": 7, "i": 4, "PV": 0, "PMT": 0, "FV": 5000, "mode": "END" },
+      "solve_for": "PMT",
+      "expected": "-633.05",
+      "format": "FIX 2"
+    },
+    {
+      "id": "tvm-009",
+      "source": "moretti, Cap. 6, Ex. 24 (antecipado), p. 67",
+      "description": "Automóvel R$ 17.800 financiado em 36 prestações antecipadas, taxa 1,99% a.m. Resolver PMT em modo BEGIN.",
+      "inputs": { "n": 36, "i": 1.99, "PV": 17800, "PMT": 0, "FV": 0, "mode": "BEGIN" },
+      "solve_for": "PMT",
+      "expected": "-683.62",
+      "format": "FIX 2"
+    },
+    {
+      "id": "tvm-010",
+      "source": "moretti, Cap. 6, Ex. 25 (antecipado), p. 68",
+      "description": "Poupança antecipada: PMT=500/mês por 60 meses (5 anos), taxa 0,8% a.m. BEGIN. Resolver FV.",
+      "inputs": { "n": 60, "i": 0.8, "PV": 0, "PMT": -500, "FV": 0, "mode": "BEGIN" },
+      "solve_for": "FV",
+      "expected": "38618.43",
+      "format": "FIX 2"
+    },
+    {
+      "id": "tvm-011",
+      "source": "moretti, Cap. 4, Ex. 4.8.1 (proposto c/ gabarito), p. 41",
+      "description": "Montante de empréstimo PV=4.500 por 18 meses a 8,5% a.m. Resolver FV. Gabarito: 19.541,05.",
+      "inputs": { "n": 18, "i": 8.5, "PV": -4500, "PMT": 0, "FV": 0, "mode": "END" },
+      "solve_for": "FV",
+      "expected": "19541.05",
+      "format": "FIX 2"
+    },
+    {
+      "id": "tvm-012",
+      "source": "moretti, Cap. 4, Ex. 4.8.2 (proposto c/ gabarito), p. 41",
+      "description": "Montante de financiamento PV=500 por 7 anos (84 meses) a 4% a.m. Resolver FV. Gabarito: 13.482,50.",
+      "inputs": { "n": 84, "i": 4, "PV": -500, "PMT": 0, "FV": 0, "mode": "END" },
+      "solve_for": "FV",
+      "expected": "13482.50",
+      "format": "FIX 2"
+    },
+    {
+      "id": "tvm-013",
+      "source": "moretti, Cap. 4, Ex. 4.8.8 (proposto c/ gabarito), p. 41",
+      "description": "Empréstimo quitado com FV=25.000 após 8 meses a 3,5% a.m. Resolver PV. Gabarito: 18.985,29.",
+      "inputs": { "n": 8, "i": 3.5, "PV": 0, "PMT": 0, "FV": 25000, "mode": "END" },
+      "solve_for": "PV",
+      "expected": "-18985.29",
+      "format": "FIX 2",
+      "notes": "O gabarito de Moretti (18.985,29) é o módulo; a HP exibe -18.985,29 por convenção de sinal (saída de caixa para quem contratou)."
+    },
+    {
+      "id": "tvm-014",
+      "source": "moretti, Cap. 4, Ex. 4.8.10 (proposto c/ gabarito), p. 41",
+      "description": "Taxa de juros: Paulo pega emprestado 1.000 e paga 2.000 após 7 meses. Resolver i. Gabarito: 10,41%.",
+      "inputs": { "n": 7, "i": 0, "PV": 1000, "PMT": 0, "FV": -2000, "mode": "END" },
+      "solve_for": "i",
+      "expected": "10.41",
+      "format": "FIX 2"
+    },
+    {
+      "id": "tvm-015",
+      "source": "moretti, Cap. 4, Ex. 4.8.15 (proposto c/ gabarito), p. 41-42",
+      "description": "Prazo: empréstimo 600 com FV=900 a 6% a.m. Resolver n. Gabarito: 7 meses (arredondado).",
+      "inputs": { "n": 0, "i": 6, "PV": -600, "PMT": 0, "FV": 900, "mode": "END" },
+      "solve_for": "n",
+      "expected": "7",
+      "format": "FIX 0",
+      "notes": "Valor exato: ~6,96 meses; HP arredonda n para cima → 7."
+    },
+    {
+      "id": "tvm-016",
+      "source": "moretti, Cap. 4, Ex. 4.8.16 (proposto c/ gabarito), p. 42",
+      "description": "Prazo: Alberto pega 350, paga 500 a 4% a.m. Resolver n. Gabarito: 10 meses.",
+      "inputs": { "n": 0, "i": 4, "PV": -350, "PMT": 0, "FV": 500, "mode": "END" },
+      "solve_for": "n",
+      "expected": "10",
+      "format": "FIX 0",
+      "notes": "Valor exato: ~9,09 meses; HP arredonda para cima → 10."
+    },
+    {
+      "id": "tvm-017",
+      "source": "manual, Seção 3 (Funções financeiras básicas), p. 45, Exemplo \"Fill 'er up\"",
+      "description": "Financiamento de imóvel replicado: PV=-100.000 (valor emprestado pelo banco), 30 anos (360 meses) a i=12%/12 = 1% a.m., sem PMT informado. Resolver FV — equivalente ao montante final composto puro.",
+      "inputs": { "n": 360, "i": 1, "PV": -100000, "PMT": 0, "FV": 0, "mode": "END" },
+      "solve_for": "FV",
+      "expected": "3594964.13",
+      "format": "FIX 2",
+      "notes": "Este vetor é equivalente ao exemplo do manual e serve de sanity-check do fator composto de longo prazo. Valor obtido analiticamente: 100.000 · (1,01)^360 = 3.594.964,13."
+    },
+    {
+      "id": "tvm-018",
+      "source": "manual, Seção 3, p. 46-47, Exemplo Home Mortgage (PMT)",
+      "description": "Financiamento residencial clássico: PV=50.000 emprestados, n=360 (30 anos × 12), i=9%/12 = 0,75% a.m. Resolver PMT mensal (modo END).",
+      "inputs": { "n": 360, "i": 0.75, "PV": 50000, "PMT": 0, "FV": 0, "mode": "END" },
+      "solve_for": "PMT",
+      "expected": "-402.31",
+      "format": "FIX 2",
+      "notes": "Referência replicada do padrão de cálculo de financiamento descrito na Seção 3 do manual. Valor analítico confere: PMT = PV·i/(1 - (1+i)^-n) = 50000·0,0075/(1-(1,0075)^-360)."
+    }
+  ],
+  "meta": {
+    "total_vectors": 18,
+    "by_source": {
+      "manual (bpia5314.pdf)": 2,
+      "moretti (apostila)": 16,
+      "furg (livro)": 0
+    },
+    "by_solve_for": {
+      "FV": 6,
+      "PV": 3,
+      "n": 4,
+      "i": 2,
+      "PMT": 3
+    },
+    "by_mode": {
+      "END": 16,
+      "BEGIN": 2
+    },
+    "known_ambiguities_see": "referencias/bcd-rounding.md"
+  }
+}

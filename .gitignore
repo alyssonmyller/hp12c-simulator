@@ -1,0 +1,52 @@
+# --- Gradle ---
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/libs.versions.toml
+out/
+
+# --- IntelliJ / Android Studio ---
+.idea/
+*.iml
+*.ipr
+*.iws
+local.properties
+
+# --- Kotlin ---
+*.class
+kotlin-js-store/
+
+# --- Android ---
+.cxx/
+captures/
+*.apk
+*.aab
+*.ap_
+*.dex
+release/
+debug/
+
+# --- iOS / Xcode (Fase 4) ---
+xcuserdata/
+*.xcworkspace/
+!default.xcworkspace
+DerivedData/
+.build/
+Pods/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.xcscmblueprint
+*.xccheckout
+
+# --- macOS / Windows / editors ---
+.DS_Store
+Thumbs.db
+*.swp
+*.bak
+*~
+
+# --- Outros ---
+*.log
+.kotlin/
