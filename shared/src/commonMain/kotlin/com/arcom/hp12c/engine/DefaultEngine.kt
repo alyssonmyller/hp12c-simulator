@@ -25,9 +25,10 @@ import com.arcom.hp12c.engine.state.unaryOp
  *   ✔ passo 3 — reducer para `Event.Entry`, `Event.StackOp`, `Event.Arith`, `Event.Memory`,
  *               `Event.Display` e `Event.AcknowledgeError`
  *   ✔ passo 4 — reducer para `Event.Financial.Store.*` + `Set(Begin|End)Mode` + `ClearFinancial`
- *               ← **este arquivo**
- *   ☐ passo 5 — reducer para `Event.Financial.Solve.*` (TVM) + flag C (STO EEX)
- *   ☐ passos 6-8 — Transcendentals, DisplayFormatter, iterar vetores TVM.
+ *   ✔ passo 5 — reducer para `Event.Financial.Solve.{Fv, Pv, Pmt}` (fechados via `powInt`)
+ *               + `ToggleCompoundFractionFlag` (flag C).  ← **este arquivo**
+ *   ☐ passo 6 — `Transcendentals` (ln/exp/pow) — habilita `Solve.N` e `Solve.I` (Newton).
+ *   ☐ passos 7-8 — DisplayFormatter, iterar 18 vetores TVM no `TvmVectorsTest`.
  *
  * ### Contrato observado
  *
@@ -42,14 +43,27 @@ import com.arcom.hp12c.engine.state.unaryOp
  *   no visor, qualquer tecla limpa o erro e é ignorada de resto. A UI é encorajada (mas não
  *   obrigada) a mandar `Event.AcknowledgeError` explícito antes do evento real.
  *
- * ### Ponto de extensão para Fase 1 passo 5
+ * ### Pontos de extensão restantes da Fase 1
  *
- * `Event.Financial.Solve.*` (os 5 "calcula a partir das outras 4") e
- * `Event.Financial.ToggleCompoundFractionFlag` (Flag C, juros compostos para período
- * fracionário) caem em `TODO` pontual — o passo 5 preenche, destravando
- * `TvmVectorsTest.tvm-001` e os demais 17 vetores TVM.
+ * - `Event.Financial.Solve.N` e `Event.Financial.Solve.I` caem em `TODO("Fase 1 passo 6 —
+ *   Transcendentals")` porque suas formas fechadas dependem de `ln` (n) e de
+ *   `ln`/`exp` dentro de Newton-Raphson (i). `Hp12cDecimal.powInt` cobre as outras
+ *   três variáveis (`Fv`, `Pv`, `Pmt`) enquanto `n` for inteiro — o que vale para
+ *   todos os 18 vetores da skill `test-vectors/tvm-vectors.json`.
+ * - `formatDisplay(...)` continua `TODO("Fase 1 passo 7 — DisplayFormatter")`. Isso
+ *   mantém `TvmVectorsTest.tvm_001` vermelho mesmo após o passo 5, mas por motivo
+ *   diferente (a parte Solve já computa o resultado correto em `state.stack.x`; é
+ *   só a renderização final em FIX/SCI/ENG + separador que falta).
  */
 internal class DefaultEngine : CalculatorEngine {
+
+    /**
+     * Constante `100` como `Hp12cDecimal`. Usada só para o quociente `i_percentual / 100` antes
+     * de alimentar as fórmulas de TVM — a HP guarda `i` em pontos percentuais, mas a matemática
+     * exige `i` em decimal. Mantida aqui (e não em `Hp12cDecimal.Companion`) porque é um detalhe
+     * do reducer financeiro, não da aritmética BCD em si.
+     */
+    private val HUNDRED: Hp12cDecimal = Hp12cDecimal.of(100)
 
     override fun reduce(state: CalculatorState, event: Event): CalculatorState {
         // Erro pendente: qualquer tecla limpa e retorna. Réplica do aparelho físico.
@@ -249,8 +263,16 @@ internal class DefaultEngine : CalculatorEngine {
                 financial = state.financial.copy(mode = TvmMode.END),
             )
 
-            is Event.Financial.Solve                   -> TODO("Fase 1 passo 5 — Solve TVM")
-            Event.Financial.ToggleCompoundFractionFlag -> TODO("Fase 1 passo 5 — Flag C (STO EEX)")
+            is Event.Financial.Solve -> reduceFinancialSolve(state.commitEntry(), event)
+
+            // STO EEX: alterna o flag C (juros compostos em período fracionário). Na Fase 1 o
+            // flag fica wired mas não é observável: só `n` inteiro está implementado, e nesse
+            // caso a equação canônica da Seção 3 de `formulas/tvm.md` não depende do flag. O
+            // efeito real entra na Fase 2 junto com as variantes da Seção 4. Não comita buffer:
+            // o usuário normalmente alterna antes de iniciar uma nova conta.
+            Event.Financial.ToggleCompoundFractionFlag -> state.copy(
+                compoundFractionFlag = !state.compoundFractionFlag,
+            )
         }
 
     /**
@@ -272,6 +294,152 @@ internal class DefaultEngine : CalculatorEngine {
             Event.Financial.Store.Fv  -> state.financial.copy(fv  = x)
         }
         return state.copy(financial = newFinancial)
+    }
+
+    /**
+     * Resolve uma variável TVM a partir das outras quatro. Segue rigorosamente as fórmulas
+     * fechadas da Seção 5 de `formulas/tvm.md`:
+     *
+     * - `Solve.Fv`:  `FV = -PV·(1+i)^n - (1+iS)·PMT·[((1+i)^n - 1)/i]`
+     * - `Solve.Pv`:  `PV = -(1+iS)·PMT·[(1-(1+i)^(-n))/i] - FV·(1+i)^(-n)`
+     * - `Solve.Pmt`: `PMT = (-PV·(1+i)^n - FV) / ((1+iS)·[((1+i)^n - 1)/i])`
+     * - `Solve.N` e `Solve.I`: dependem de `ln` (e Newton-Raphson para `i`) — `TODO` do passo 6.
+     *
+     * Caso degenerado `i = 0`: a equação colapsa para somatórios lineares (Seção 3 final de
+     * `formulas/tvm.md`) — tratamos em ramo separado para evitar divisão por zero.
+     *
+     * Convenção para registradores não-inicializados (`null`): são tratados como `ZERO`,
+     * replicando o comportamento da HP física descrito em Seção 6 de `formulas/tvm.md`
+     * ("um valor não-explicitamente fornecido é assumido zero se o registrador foi limpo
+     * antes"). `ClearFinancial` define explicitamente tudo como `null`; os registradores
+     * começam `null` na engine inicial, que é equivalente a "recém-limpo".
+     *
+     * **Pós-condições** (regras 4 e 5 da Seção 5 de `stack-behavior.md` aplicadas a Solve):
+     *
+     * - O resultado calculado é empurrado em X via [Stack.pushValue] — respeita `stackLift`
+     *   como se fosse uma nova digitação (comportamento documentado em Apêndice A p.181 para
+     *   todas as funções que produzem novo X sem consumir operandos da pilha).
+     * - `LASTx` ← X antigo. O HP considera Solve uma operação que "destrói X" e preenche
+     *   LSTx, para permitir `LSTx` após o cálculo.
+     * - `financial.<var>` ← valor calculado (substitui o `null` original). É como a HP física
+     *   se comporta: após `Solve.Fv`, pressionar `RCL FV` devolve o valor recém-calculado.
+     *
+     * **Erros** (captura [ArithmeticException] → `pendingError`, pilha intacta — regra 8):
+     * as fórmulas são numericamente estáveis para os vetores da skill; divisão por zero só
+     * ocorreria se uma condição de borda passar despercebida pelos ramos degenerados.
+     */
+    private fun reduceFinancialSolve(state: CalculatorState, event: Event.Financial.Solve): CalculatorState {
+        // Solve.N e Solve.I dependem de `ln`/`exp`: gating pelo passo 6.
+        if (event is Event.Financial.Solve.N || event is Event.Financial.Solve.I) {
+            return TODO("Fase 1 passo 6 — Solve.${event::class.simpleName} requer Transcendentals (ln/exp/pow sobre Hp12cDecimal)")
+        }
+
+        val f = state.financial
+        val nDecimal = f.n ?: Hp12cDecimal.ZERO
+        val iPct     = f.i ?: Hp12cDecimal.ZERO   // percentual
+        val pv       = f.pv  ?: Hp12cDecimal.ZERO
+        val pmt      = f.pmt ?: Hp12cDecimal.ZERO
+        val fv       = f.fv  ?: Hp12cDecimal.ZERO
+
+        // `i` em decimal por período — conversão única aqui, já documentada em formulas/tvm.md §3.
+        val iDec = iPct / HUNDRED
+        // `n` como inteiro: Fase 1 suporta apenas `n` inteiro (ver Seção 4 de formulas/tvm.md —
+        // variantes fracionárias ficam para Fase 2 junto com o flag C). `powInt` exige `Int`.
+        val n = nDecimal.toIntTruncated()
+        val isBegin = f.mode == TvmMode.BEGIN
+
+        val result = try {
+            when (event) {
+                Event.Financial.Solve.Fv  -> computeFv(n, iDec, pv, pmt, isBegin)
+                Event.Financial.Solve.Pv  -> computePv(n, iDec, pmt, fv, isBegin)
+                Event.Financial.Solve.Pmt -> computePmt(n, iDec, pv, fv, isBegin)
+                is Event.Financial.Solve.N, is Event.Financial.Solve.I ->
+                    error("unreachable: filtrado acima")
+            }
+        } catch (e: ArithmeticException) {
+            // Divisão por zero ou overflow na aritmética BCD — pilha preservada (regra 8).
+            return state.copy(pendingError = Hp12cError.TvmNoConverge)
+        }
+
+        // Atualiza o registrador resolvido; pilha ganha resultado em X respeitando stackLift; LSTx
+        // guarda o X destruído pelo Solve.
+        val newFinancial = when (event) {
+            Event.Financial.Solve.Fv  -> f.copy(fv  = result)
+            Event.Financial.Solve.Pv  -> f.copy(pv  = result)
+            Event.Financial.Solve.Pmt -> f.copy(pmt = result)
+            else -> f
+        }
+        val newStack = state.stack.copy(lastX = state.stack.x).pushValue(result)
+        return state.copy(stack = newStack, financial = newFinancial)
+    }
+
+    /**
+     * `FV = -PV·(1+i)^n - (1+iS)·PMT·[((1+i)^n - 1)/i]`.
+     * Ramo degenerado `i = 0`: `FV = -PV - n·PMT`.
+     */
+    private fun computeFv(
+        n: Int, i: Hp12cDecimal, pv: Hp12cDecimal, pmt: Hp12cDecimal, isBegin: Boolean,
+    ): Hp12cDecimal {
+        if (i.isZero()) {
+            return -pv - Hp12cDecimal.of(n) * pmt
+        }
+        val factor = (Hp12cDecimal.ONE + i).powInt(n)        // (1+i)^n
+        val annuity = (factor - Hp12cDecimal.ONE) / i        // ((1+i)^n - 1)/i
+        val begAdj = if (isBegin) Hp12cDecimal.ONE + i else Hp12cDecimal.ONE
+        return -pv * factor - begAdj * pmt * annuity
+    }
+
+    /**
+     * `PV = -(1+iS)·PMT·[(1-(1+i)^(-n))/i] - FV·(1+i)^(-n)`.
+     * Ramo degenerado `i = 0`: `PV = -FV - n·PMT`.
+     */
+    private fun computePv(
+        n: Int, i: Hp12cDecimal, pmt: Hp12cDecimal, fv: Hp12cDecimal, isBegin: Boolean,
+    ): Hp12cDecimal {
+        if (i.isZero()) {
+            return -fv - Hp12cDecimal.of(n) * pmt
+        }
+        val discount = (Hp12cDecimal.ONE + i).powInt(-n)     // (1+i)^(-n)
+        val annuity = (Hp12cDecimal.ONE - discount) / i      // (1 - (1+i)^(-n)) / i
+        val begAdj = if (isBegin) Hp12cDecimal.ONE + i else Hp12cDecimal.ONE
+        return -begAdj * pmt * annuity - fv * discount
+    }
+
+    /**
+     * `PMT = (-PV·(1+i)^n - FV) / ((1+iS)·[((1+i)^n - 1)/i])`.
+     * Ramo degenerado `i = 0`: `PMT = -(PV + FV) / n`.
+     *
+     * Se `n = 0` também (caso absurdo), propaga `ArithmeticException` no `/ n` e o caller
+     * traduz para `Hp12cError.TvmNoConverge`.
+     */
+    private fun computePmt(
+        n: Int, i: Hp12cDecimal, pv: Hp12cDecimal, fv: Hp12cDecimal, isBegin: Boolean,
+    ): Hp12cDecimal {
+        if (i.isZero()) {
+            return -(pv + fv) / Hp12cDecimal.of(n)
+        }
+        val factor = (Hp12cDecimal.ONE + i).powInt(n)        // (1+i)^n
+        val annuity = (factor - Hp12cDecimal.ONE) / i        // ((1+i)^n - 1)/i
+        val begAdj = if (isBegin) Hp12cDecimal.ONE + i else Hp12cDecimal.ONE
+        return (-pv * factor - fv) / (begAdj * annuity)
+    }
+
+    /**
+     * Converte um `Hp12cDecimal` em `Int` truncando a parte fracionária. Usado só para alimentar
+     * `Hp12cDecimal.powInt(Int)` com o `n` da TVM. **Limitação da Fase 1:** qualquer parte
+     * fracionária é silenciosamente descartada — a Seção 4 de `formulas/tvm.md` descreve o
+     * tratamento correto via flag C (juros simples vs compostos no pedaço fracionário), que
+     * entra na Fase 2. Para os 18 vetores da skill, `n` é sempre inteiro, então não há perda.
+     *
+     * Implementação via `toString()` + parse: o actual class de JVM usa `toPlainString()` (sem
+     * notação científica), então `substringBefore('.')` isola a parte inteira corretamente.
+     * Para valores fora do intervalo de `Int` (que TVM não produz na prática — `n` real cabe em
+     * `powInt` de qualquer jeito), `toInt()` lança e o caller translata para erro TVM.
+     */
+    private fun Hp12cDecimal.toIntTruncated(): Int {
+        val s = toString()
+        val intPart = if ('.' in s) s.substringBefore('.') else s
+        return intPart.toInt()
     }
 
     // ───────────────────────────────────────────────────────────────────────────
