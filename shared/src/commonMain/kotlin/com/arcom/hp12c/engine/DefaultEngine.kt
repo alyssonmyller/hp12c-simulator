@@ -6,6 +6,7 @@ import com.arcom.hp12c.engine.math.Hp12cDecimal
 import com.arcom.hp12c.engine.state.CalculatorState
 import com.arcom.hp12c.engine.state.DisplayFormat
 import com.arcom.hp12c.engine.state.NumericSeparator
+import com.arcom.hp12c.engine.state.TvmMode
 import com.arcom.hp12c.engine.state.acceptNewNumber
 import com.arcom.hp12c.engine.state.binaryOp
 import com.arcom.hp12c.engine.state.clx
@@ -22,9 +23,10 @@ import com.arcom.hp12c.engine.state.unaryOp
  *   ✔ passo 1 — [Hp12cDecimal] (aritmética BCD 10 dígitos HALF_EVEN)
  *   ✔ passo 2 — `StackOps` (pilha RPN pura com LSTx + flag stackLift)
  *   ✔ passo 3 — reducer para `Event.Entry`, `Event.StackOp`, `Event.Arith`, `Event.Memory`,
- *               `Event.Display` e `Event.AcknowledgeError`  ← **este arquivo**
- *   ☐ passo 4 — reducer para `Event.Financial.Store.*` + `Set(Begin|End)Mode` + `ClearFinancial`
- *   ☐ passo 5 — reducer para `Event.Financial.Solve.*` (TVM)
+ *               `Event.Display` e `Event.AcknowledgeError`
+ *   ✔ passo 4 — reducer para `Event.Financial.Store.*` + `Set(Begin|End)Mode` + `ClearFinancial`
+ *               ← **este arquivo**
+ *   ☐ passo 5 — reducer para `Event.Financial.Solve.*` (TVM) + flag C (STO EEX)
  *   ☐ passos 6-8 — Transcendentals, DisplayFormatter, iterar vetores TVM.
  *
  * ### Contrato observado
@@ -40,11 +42,12 @@ import com.arcom.hp12c.engine.state.unaryOp
  *   no visor, qualquer tecla limpa o erro e é ignorada de resto. A UI é encorajada (mas não
  *   obrigada) a mandar `Event.AcknowledgeError` explícito antes do evento real.
  *
- * ### Ponto de extensão para Fase 1 passos 4-5
+ * ### Ponto de extensão para Fase 1 passo 5
  *
- * Eventos da família `Event.Financial` caem num `TODO` pontual. Mantém a engine compilando e
- * isola o que falta — `TvmVectorsTest.tvm-001` continuará falhando exatamente lá até o passo
- * 5 completar.
+ * `Event.Financial.Solve.*` (os 5 "calcula a partir das outras 4") e
+ * `Event.Financial.ToggleCompoundFractionFlag` (Flag C, juros compostos para período
+ * fracionário) caem em `TODO` pontual — o passo 5 preenche, destravando
+ * `TvmVectorsTest.tvm-001` e os demais 17 vetores TVM.
  */
 internal class DefaultEngine : CalculatorEngine {
 
@@ -61,7 +64,7 @@ internal class DefaultEngine : CalculatorEngine {
             is Event.Memory    -> reduceMemory(state.commitEntry(), event)
             is Event.Display   -> reduceDisplay(state, event)   // NÃO comita (entrada persiste)
             Event.AcknowledgeError -> state                      // sem erro pendente: no-op
-            is Event.Financial -> TODO("Fase 1 passos 4-5 — Event.Financial.*")
+            is Event.Financial -> reduceFinancial(state, event)
         }
     }
 
@@ -215,6 +218,61 @@ internal class DefaultEngine : CalculatorEngine {
 
             Event.Memory.ClearReg -> state.copy(memory = state.memory.clearAll())
         }
+
+    // ───────────────────────────────────────────────────────────────────────────
+    //  Financial — Store.{N,i,PV,PMT,FV}, SetBeginMode, SetEndMode, ClearFinancial
+    //  (Solve.* e ToggleCompoundFractionFlag ficam para o passo 5)
+    // ───────────────────────────────────────────────────────────────────────────
+
+    private fun reduceFinancial(state: CalculatorState, event: Event.Financial): CalculatorState =
+        when (event) {
+            // Store.* e ClearFinancial comitam o buffer antes de tocar em `financial`, porque
+            // o usuário acabou de digitar um número (Store) ou porque o efeito é funcional e
+            // não puramente cosmético (ClearFinancial zera registradores).
+            is Event.Financial.Store       -> reduceFinancialStore(state.commitEntry(), event)
+            Event.Financial.ClearFinancial -> state.commitEntry().copy(
+                // `f CLEAR FIN` zera só os 5 registradores de TVM — não toca pilha, memórias de
+                // usuário, nem o modo BEG/END (manual, Apêndice A — "Clearing Operations").
+                financial = state.financial.copy(
+                    n = null, i = null, pv = null, pmt = null, fv = null,
+                ),
+            )
+
+            // Mudança de modo é puramente cosmética: não comita o buffer em digitação, não toca
+            // nem na pilha nem nos registradores numéricos — apenas alterna o flag BEG/END. O
+            // manual indica que trocar o modo enquanto n/i/PV/PMT/FV já estão preenchidos é
+            // legítimo (e muda o resultado do próximo Solve).
+            Event.Financial.SetBeginMode   -> state.copy(
+                financial = state.financial.copy(mode = TvmMode.BEGIN),
+            )
+            Event.Financial.SetEndMode     -> state.copy(
+                financial = state.financial.copy(mode = TvmMode.END),
+            )
+
+            is Event.Financial.Solve                   -> TODO("Fase 1 passo 5 — Solve TVM")
+            Event.Financial.ToggleCompoundFractionFlag -> TODO("Fase 1 passo 5 — Flag C (STO EEX)")
+        }
+
+    /**
+     * Armazena `stack.x` no registrador de TVM correspondente. **Não toca na pilha** (regra 7
+     * da Seção 5 de `stack-behavior.md`): STO, em qualquer variante, preserva X/Y/Z/T/LSTx.
+     * A única mudança em `stack` já aconteceu em [commitEntry], no caminho de entrada.
+     *
+     * `i` é armazenado em percentual exatamente como o usuário o digitou (`4`, não `0.04`).
+     * A conversão para decimal acontece só dentro das fórmulas de TVM, no passo 5 — ver
+     * Seção 3 de `formulas/tvm.md` e Seção 3.2 de `arquitetura/engine-interface.md`.
+     */
+    private fun reduceFinancialStore(state: CalculatorState, event: Event.Financial.Store): CalculatorState {
+        val x = state.stack.x
+        val newFinancial = when (event) {
+            Event.Financial.Store.N   -> state.financial.copy(n   = x)
+            Event.Financial.Store.I   -> state.financial.copy(i   = x)
+            Event.Financial.Store.Pv  -> state.financial.copy(pv  = x)
+            Event.Financial.Store.Pmt -> state.financial.copy(pmt = x)
+            Event.Financial.Store.Fv  -> state.financial.copy(fv  = x)
+        }
+        return state.copy(financial = newFinancial)
+    }
 
     // ───────────────────────────────────────────────────────────────────────────
     //  Display — FIX, SCI, ENG. Não comita o buffer (entrada em curso persiste).
