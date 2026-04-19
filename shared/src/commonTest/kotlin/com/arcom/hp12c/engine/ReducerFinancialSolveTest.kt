@@ -1,5 +1,6 @@
 package com.arcom.hp12c.engine
 
+import com.arcom.hp12c.engine.error.Hp12cError
 import com.arcom.hp12c.engine.event.Event
 import com.arcom.hp12c.engine.math.Hp12cDecimal
 import com.arcom.hp12c.engine.state.CalculatorState
@@ -11,10 +12,11 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * Testes do [DefaultEngine.reduce] para `Event.Financial.Solve.{Fv, Pv, Pmt}` e para
- * `Event.Financial.ToggleCompoundFractionFlag` — **Fase 1 passo 5**.
+ * Testes do [DefaultEngine.reduce] para `Event.Financial.Solve.*` e para
+ * `Event.Financial.ToggleCompoundFractionFlag`.
  *
- * `Solve.N` e `Solve.I` são cobertos no passo 6 (dependem de `ln`/`exp` em `Hp12cDecimal`).
+ * Cobre **Fase 1 passo 5** (Solve.Fv/Pv/Pmt + flag C) **e passo 6** (Solve.N/Solve.I via
+ * `Hp12cDecimal.ln`/`exp`/`pow`).
  *
  * ### Estratégia
  *
@@ -23,32 +25,33 @@ import kotlin.test.assertTrue
  * `stack.x` contra o valor esperado da skill `test-vectors/tvm-vectors.json` usando uma
  * tolerância compatível com o `format` do vetor:
  *
- *   FIX 2 → tolerância 0,005  (meio ULP em 2 casas)
+ *   FIX 0 → tolerância 0,5      (inteiros exatos — teto da HP em Solve.N)
+ *   FIX 2 → tolerância 0,005    (meio ULP em 2 casas)
  *
  * Essa tolerância blinda o teste contra a formatação (ainda não implementada — passo 7)
  * sem perder fidelidade: se a BCD interna diverge mais do que meio ULP da resposta que a
  * HP física exibiria, é bug numérico.
  *
- * Os vetores cobertos aqui são **13 dos 18**:
+ * Os 18 vetores da skill são cobertos de ponta a ponta:
  *
- *   - tvm-001, 011, 012, 017 — Solve.Fv (END, sem PMT)
- *   - tvm-007              — Solve.Fv (END, com PMT, PV=0)
- *   - tvm-010              — Solve.Fv (BEGIN, com PMT, PV=0)
- *   - tvm-002, 013         — Solve.Pv (END, sem PMT)
- *   - tvm-005              — Solve.Pv (END, com PMT, FV=0)
- *   - tvm-006, 018         — Solve.Pmt (END, FV=0)
- *   - tvm-008              — Solve.Pmt (END, PV=0)
- *   - tvm-009              — Solve.Pmt (BEGIN, FV=0)
- *
- * Os 5 vetores restantes (tvm-003, 004, 014 — Solve.I; tvm-015, 016 — Solve.N) ficam
- * bloqueados pelo passo 6 e já têm reserva de teste em `TvmVectorsTest` (tvm-001 hoje,
- * mais os outros 17 quando `formatDisplay` aterrissar no passo 7).
+ *   - tvm-001, 011, 012, 017        — Solve.Fv (END, sem PMT)
+ *   - tvm-007                       — Solve.Fv (END, com PMT, PV=0)
+ *   - tvm-010                       — Solve.Fv (BEGIN, com PMT, PV=0)
+ *   - tvm-002, 013                  — Solve.Pv (END, sem PMT)
+ *   - tvm-005                       — Solve.Pv (END, com PMT, FV=0)
+ *   - tvm-006, 018                  — Solve.Pmt (END, FV=0)
+ *   - tvm-008                       — Solve.Pmt (END, PV=0)
+ *   - tvm-009                       — Solve.Pmt (BEGIN, FV=0)
+ *   - tvm-003, 015, 016             — Solve.N  (END, PMT=0, teto)
+ *   - tvm-004, 014                  — Solve.I  (END, PMT=0, forma fechada)
  *
  * Também validamos comportamento não-numérico (esses **não** dependem de tolerância):
  *   - pilha após Solve: `X ← resultado` via `pushValue`, `LSTx ← X antigo`, outros níveis
  *     deslocam normalmente (regra 4 da Seção 5 de `stack-behavior.md`)
  *   - registrador resolvido: `financial.<var>` passa de `null` para o valor computado
+ *     (para `Solve.N`, o valor em `financial.n` é o teto; para `Solve.I`, é em percentual)
  *   - ramo degenerado `i = 0`: fórmula linear (FV = -PV - n·PMT etc.)
+ *   - sinais inválidos em Solve.N/Solve.I → `Hp12cError.TvmInvalidSigns`, pilha intacta
  *   - `ToggleCompoundFractionFlag` alterna só o boolean, sem tocar em mais nada
  */
 class ReducerFinancialSolveTest {
@@ -204,7 +207,47 @@ class ReducerFinancialSolveTest {
         assertNear("-402.31", s.stack.x, places = 2, "tvm-018")
     }
 
-    // ─── 5. Ramo degenerado i = 0 ─────────────────────────────────────────────
+    // ─── 5. Solve.N — teto sempre arredondado para cima ──────────────────────
+
+    @Test fun tvm_003_n_para_liquidar_4278_43_em_6559_68_a_3_25pc_eh_14_meses() {
+        // Moretti Cap. 4 Ex. 12: valor exato ~13,36 meses → HP arredonda para 14.
+        // Aceita tolerância 0,5 (FIX 0) porque o comparador usa diff < 0.5, mas na prática
+        // a resposta tem que ser exatamente o inteiro 14 (teto da fração 13.36…).
+        val s = runTvm(TvmMode.END, "0", "3.25", "-4278.43", "0", "6559.68", Event.Financial.Solve.N)
+        assertNear("14", s.stack.x, places = 0, "tvm-003")
+    }
+
+    @Test fun tvm_015_n_para_600_virar_900_a_6pc_eh_7_meses() {
+        // Moretti p.41 Ex. 4.8.15: valor exato ~6,96 meses → teto = 7.
+        val s = runTvm(TvmMode.END, "0", "6", "-600", "0", "900", Event.Financial.Solve.N)
+        assertNear("7", s.stack.x, places = 0, "tvm-015")
+    }
+
+    @Test fun tvm_016_n_para_350_virar_500_a_4pc_eh_10_meses() {
+        // Moretti p.42 Ex. 4.8.16: valor exato ~9,09 meses → teto = 10. Fração >0, portanto
+        // +1 sobre a parte inteira — validação direta do caminho `hasNonZero` da `ceil`.
+        val s = runTvm(TvmMode.END, "0", "4", "-350", "0", "500", Event.Financial.Solve.N)
+        assertNear("10", s.stack.x, places = 0, "tvm-016")
+    }
+
+    // ─── 6. Solve.I — forma fechada quando PMT = 0 ───────────────────────────
+
+    @Test fun tvm_004_i_para_1210_72_virar_1695_01_em_9_meses_eh_3_81pc() {
+        // Moretti Cap. 4 Ex. 13: i = (1695.01/1210.72)^(1/9) - 1 = 0.03809358 → 3,81% a.m.
+        // A HP em FIX 6 mostra "3,809358"; em FIX 2 "3,81". Tolerância FIX 2 = 0,005 absorve
+        // a diferença entre o valor computado e o display arredondado.
+        val s = runTvm(TvmMode.END, "9", "0", "-1210.72", "0", "1695.01", Event.Financial.Solve.I)
+        assertNear("3.81", s.stack.x, places = 2, "tvm-004")
+    }
+
+    @Test fun tvm_014_i_para_1000_virar_2000_em_7_meses_eh_10_41pc() {
+        // Moretti p.41 Ex. 4.8.10: dobrar em 7 meses → i = 2^(1/7) - 1 ≈ 0,104089 → 10,41% a.m.
+        // Inversão de sinal (PV positivo, FV negativo) — caminho `ratio = -FV/PV = 2`, positivo.
+        val s = runTvm(TvmMode.END, "7", "0", "1000", "0", "-2000", Event.Financial.Solve.I)
+        assertNear("10.41", s.stack.x, places = 2, "tvm-014")
+    }
+
+    // ─── 7. Ramo degenerado i = 0 ─────────────────────────────────────────────
 
     @Test fun solve_fv_com_i_zero_eh_somatorio_linear() {
         // i=0 colapsa juros compostos em aritmética simples:
@@ -227,7 +270,7 @@ class ReducerFinancialSolveTest {
         assertEquals(Hp12cDecimal.of(-100), s.stack.x, "com i=0: PMT = -(1000+0)/10 = -100")
     }
 
-    // ─── 6. Efeitos colaterais: pilha, LSTx, registrador resolvido ────────────
+    // ─── 8. Efeitos colaterais: pilha, LSTx, registrador resolvido ────────────
 
     @Test fun solve_fv_atualiza_registrador_financial_fv() {
         // Após Solve.Fv, o registrador `fv` não pode mais ser `null` — ele vira a resposta,
@@ -264,7 +307,7 @@ class ReducerFinancialSolveTest {
         assertNear("6083.26", s.stack.x, places = 2, "stack.x = resultado calculado")
     }
 
-    // ─── 7. Registradores não-inicializados tratados como zero ────────────────
+    // ─── 9. Registradores não-inicializados tratados como zero ───────────────
 
     @Test fun solve_fv_com_registradores_null_assume_zero() {
         // Convenção do manual (formulas/tvm.md §6): registrador não-setado vira zero
@@ -281,7 +324,71 @@ class ReducerFinancialSolveTest {
         assertNear("6083.26", s.stack.x, places = 2, "mesmo resultado de tvm-001")
     }
 
-    // ─── 8. Flag C (STO EEX / ToggleCompoundFractionFlag) ─────────────────────
+    // ─── 9b. Efeitos colaterais específicos de Solve.N e Solve.I ─────────────
+
+    @Test fun solve_n_atualiza_registrador_financial_n_com_o_teto() {
+        // Após Solve.N, o registrador `n` guarda o **teto** (igual ao que o visor mostra) —
+        // um `RCL n` subsequente devolve 14 (não 13.36). A HP física age assim desde o
+        // Apêndice E do manual; ver nota em tvm-vectors.json tvm-003.
+        val s = runTvm(TvmMode.END, "0", "3.25", "-4278.43", "0", "6559.68", Event.Financial.Solve.N)
+        assertNotNull(s.financial.n, "Solve.N sobrescreveu n com o resultado")
+        assertEquals(s.stack.x, s.financial.n, "mesmo valor em X e em financial.n")
+        assertEquals(Hp12cDecimal.of(14), s.financial.n, "teto exato (não 13.36)")
+    }
+
+    @Test fun solve_i_atualiza_registrador_financial_i_em_percentual() {
+        // O valor guardado em `financial.i` é o mesmo que o usuário digitaria: em percentual.
+        // Um `RCL i` subsequente deve retornar ~3,81 (e não ~0,0381 em decimal).
+        val s = runTvm(TvmMode.END, "9", "0", "-1210.72", "0", "1695.01", Event.Financial.Solve.I)
+        assertNotNull(s.financial.i, "Solve.I sobrescreveu i com o resultado")
+        assertEquals(s.stack.x, s.financial.i, "mesmo valor em X e em financial.i")
+        val diff = s.financial.i!! - Hp12cDecimal.of("3.81")
+        val tol = Hp12cDecimal.of("0.005")
+        assertTrue(diff < tol && diff > -tol, "i em percentual, ~3.81: veio=${s.financial.i}")
+    }
+
+    @Test fun solve_n_empurra_resultado_em_X_e_guarda_X_antigo_em_LSTx() {
+        // Regra 4 aplicada a Solve.N: X antigo (o 6559.68 do último Store.Fv, já comitado)
+        // vai para LSTx; X novo é o `n` ceiled.
+        val s = runTvm(TvmMode.END, "0", "3.25", "-4278.43", "0", "6559.68", Event.Financial.Solve.N)
+        assertEquals(Hp12cDecimal.of("6559.68"), s.stack.lastX, "LSTx ← X antigo")
+        assertEquals(Hp12cDecimal.of(14), s.stack.x, "X ← teto(13.36) = 14")
+    }
+
+    @Test fun solve_i_empurra_resultado_em_X_e_guarda_X_antigo_em_LSTx() {
+        val s = runTvm(TvmMode.END, "9", "0", "-1210.72", "0", "1695.01", Event.Financial.Solve.I)
+        assertEquals(Hp12cDecimal.of("1695.01"), s.stack.lastX, "LSTx ← X antigo")
+    }
+
+    @Test fun solve_n_com_sinais_inconsistentes_dispara_tvm_invalid_signs() {
+        // PV e FV com o mesmo sinal e PMT=0: não existe `n` positivo que satisfaça a equação.
+        // Ratio `-FV/PV` fica negativo, `ln` lança, reducer mapeia para TvmInvalidSigns.
+        // Pilha e registradores preservados (regra 8).
+        val events = buildList {
+            addAll(number("10"));    add(Event.Financial.Store.I)     // i = 10%
+            addAll(number("-1000")); add(Event.Financial.Store.Pv)
+            addAll(number("-500"));  add(Event.Financial.Store.Fv)    // mesmo sinal que PV
+            add(Event.Financial.Solve.N)
+        }
+        val s = engine.reduce(initial, events)
+        assertEquals(Hp12cError.TvmInvalidSigns, s.pendingError)
+        assertNull(s.financial.n, "n permanece null após erro — registrador preservado")
+    }
+
+    @Test fun solve_i_com_sinais_inconsistentes_dispara_tvm_invalid_signs() {
+        // PV e FV mesmo sinal, PMT=0: ratio `-FV/PV` ≤ 0, `ln` inválido.
+        val events = buildList {
+            addAll(number("5"));     add(Event.Financial.Store.N)
+            addAll(number("1000"));  add(Event.Financial.Store.Pv)
+            addAll(number("500"));   add(Event.Financial.Store.Fv)
+            add(Event.Financial.Solve.I)
+        }
+        val s = engine.reduce(initial, events)
+        assertEquals(Hp12cError.TvmInvalidSigns, s.pendingError)
+        assertNull(s.financial.i, "i permanece null após erro — registrador preservado")
+    }
+
+    // ─── 10. Flag C (STO EEX / ToggleCompoundFractionFlag) ───────────────────
 
     @Test fun toggle_compound_fraction_flag_alterna_booleano() {
         // Estado inicial: flag desligada (juros simples no período fracionário — default HP).

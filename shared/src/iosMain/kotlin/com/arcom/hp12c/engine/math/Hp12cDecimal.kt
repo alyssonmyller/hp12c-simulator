@@ -23,6 +23,8 @@ actual class Hp12cDecimal : Comparable<Hp12cDecimal> {
 
     actual fun powInt(exponent: Int):          Hp12cDecimal = todoIos()
     actual fun pow(exponent: Hp12cDecimal):    Hp12cDecimal = todoIos()
+    actual fun ln():                           Hp12cDecimal = todoIos()
+    actual fun exp():                          Hp12cDecimal = todoIos()
 
     actual fun isZero(): Boolean = todoIos()
 

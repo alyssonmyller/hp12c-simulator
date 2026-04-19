@@ -26,8 +26,9 @@ import com.arcom.hp12c.engine.state.unaryOp
  *               `Event.Display` e `Event.AcknowledgeError`
  *   ✔ passo 4 — reducer para `Event.Financial.Store.*` + `Set(Begin|End)Mode` + `ClearFinancial`
  *   ✔ passo 5 — reducer para `Event.Financial.Solve.{Fv, Pv, Pmt}` (fechados via `powInt`)
- *               + `ToggleCompoundFractionFlag` (flag C).  ← **este arquivo**
- *   ☐ passo 6 — `Transcendentals` (ln/exp/pow) — habilita `Solve.N` e `Solve.I` (Newton).
+ *               + `ToggleCompoundFractionFlag` (flag C).
+ *   ✔ passo 6 — `Transcendentals` (ln/exp/pow) habilitou `Solve.N` (fórmula fechada + teto)
+ *               e `Solve.I` (Newton-Raphson sobre a equação TVM).  ← **este arquivo**
  *   ☐ passos 7-8 — DisplayFormatter, iterar 18 vetores TVM no `TvmVectorsTest`.
  *
  * ### Contrato observado
@@ -45,13 +46,8 @@ import com.arcom.hp12c.engine.state.unaryOp
  *
  * ### Pontos de extensão restantes da Fase 1
  *
- * - `Event.Financial.Solve.N` e `Event.Financial.Solve.I` caem em `TODO("Fase 1 passo 6 —
- *   Transcendentals")` porque suas formas fechadas dependem de `ln` (n) e de
- *   `ln`/`exp` dentro de Newton-Raphson (i). `Hp12cDecimal.powInt` cobre as outras
- *   três variáveis (`Fv`, `Pv`, `Pmt`) enquanto `n` for inteiro — o que vale para
- *   todos os 18 vetores da skill `test-vectors/tvm-vectors.json`.
  * - `formatDisplay(...)` continua `TODO("Fase 1 passo 7 — DisplayFormatter")`. Isso
- *   mantém `TvmVectorsTest.tvm_001` vermelho mesmo após o passo 5, mas por motivo
+ *   mantém `TvmVectorsTest.tvm_001` vermelho mesmo após o passo 6, mas por motivo
  *   diferente (a parte Solve já computa o resultado correto em `state.stack.x`; é
  *   só a renderização final em FIX/SCI/ENG + separador que falta).
  */
@@ -234,8 +230,8 @@ internal class DefaultEngine : CalculatorEngine {
         }
 
     // ───────────────────────────────────────────────────────────────────────────
-    //  Financial — Store.{N,i,PV,PMT,FV}, SetBeginMode, SetEndMode, ClearFinancial
-    //  (Solve.* e ToggleCompoundFractionFlag ficam para o passo 5)
+    //  Financial — Store.{N,i,PV,PMT,FV}, SetBeginMode, SetEndMode, ClearFinancial,
+    //  Solve.{Fv,Pv,Pmt,N,I} e ToggleCompoundFractionFlag.
     // ───────────────────────────────────────────────────────────────────────────
 
     private fun reduceFinancial(state: CalculatorState, event: Event.Financial): CalculatorState =
@@ -303,7 +299,11 @@ internal class DefaultEngine : CalculatorEngine {
      * - `Solve.Fv`:  `FV = -PV·(1+i)^n - (1+iS)·PMT·[((1+i)^n - 1)/i]`
      * - `Solve.Pv`:  `PV = -(1+iS)·PMT·[(1-(1+i)^(-n))/i] - FV·(1+i)^(-n)`
      * - `Solve.Pmt`: `PMT = (-PV·(1+i)^n - FV) / ((1+iS)·[((1+i)^n - 1)/i])`
-     * - `Solve.N` e `Solve.I`: dependem de `ln` (e Newton-Raphson para `i`) — `TODO` do passo 6.
+     * - `Solve.N`:   `n = ln(((1+iS)·PMT - FV·i) / ((1+iS)·PMT + PV·i)) / ln(1+i)`, sempre
+     *                arredondado para cima (Moretti Ex. 12: `13,36 → 14` no visor).
+     * - `Solve.I`:   forma fechada `i = (-FV/PV)^(1/n) - 1` quando `PMT = 0`; Newton-Raphson
+     *                sobre a equação TVM canônica caso contrário, com derivada por diferença
+     *                central. Resultado percentual.
      *
      * Caso degenerado `i = 0`: a equação colapsa para somatórios lineares (Seção 3 final de
      * `formulas/tvm.md`) — tratamos em ramo separado para evitar divisão por zero.
@@ -323,17 +323,19 @@ internal class DefaultEngine : CalculatorEngine {
      *   LSTx, para permitir `LSTx` após o cálculo.
      * - `financial.<var>` ← valor calculado (substitui o `null` original). É como a HP física
      *   se comporta: após `Solve.Fv`, pressionar `RCL FV` devolve o valor recém-calculado.
+     *   Para `Solve.N`, o valor armazenado em `financial.n` é o **teto** (igual ao mostrado
+     *   no visor); para `Solve.I`, o valor armazenado é em **percentual** (forma como `i` foi
+     *   digitado originalmente).
      *
-     * **Erros** (captura [ArithmeticException] → `pendingError`, pilha intacta — regra 8):
-     * as fórmulas são numericamente estáveis para os vetores da skill; divisão por zero só
-     * ocorreria se uma condição de borda passar despercebida pelos ramos degenerados.
+     * **Erros** (pilha preservada — regra 8):
+     *
+     * - [TvmSignMismatch] (ratio ≤ 0 em `Solve.N`/`Solve.I` com PMT=0, ou `n ≤ 0` em
+     *   `Solve.I`) → `Hp12cError.TvmInvalidSigns`. Reproduz `Error 5` do manual quando a
+     *   combinação de sinais de PV/PMT/FV é inconsistente com a equação TVM.
+     * - [ArithmeticException] genérica (divisão por zero, overflow no BCD, Newton-Raphson
+     *   não convergiu em 100 iterações) → `Hp12cError.TvmNoConverge`.
      */
     private fun reduceFinancialSolve(state: CalculatorState, event: Event.Financial.Solve): CalculatorState {
-        // Solve.N e Solve.I dependem de `ln`/`exp`: gating pelo passo 6.
-        if (event is Event.Financial.Solve.N || event is Event.Financial.Solve.I) {
-            return TODO("Fase 1 passo 6 — Solve.${event::class.simpleName} requer Transcendentals (ln/exp/pow sobre Hp12cDecimal)")
-        }
-
         val f = state.financial
         val nDecimal = f.n ?: Hp12cDecimal.ZERO
         val iPct     = f.i ?: Hp12cDecimal.ZERO   // percentual
@@ -353,11 +355,16 @@ internal class DefaultEngine : CalculatorEngine {
                 Event.Financial.Solve.Fv  -> computeFv(n, iDec, pv, pmt, isBegin)
                 Event.Financial.Solve.Pv  -> computePv(n, iDec, pmt, fv, isBegin)
                 Event.Financial.Solve.Pmt -> computePmt(n, iDec, pv, fv, isBegin)
-                is Event.Financial.Solve.N, is Event.Financial.Solve.I ->
-                    error("unreachable: filtrado acima")
+                Event.Financial.Solve.N   -> computeN(iDec, pv, pmt, fv, isBegin)
+                Event.Financial.Solve.I   -> computeI(n, pv, pmt, fv, isBegin)
             }
+        } catch (e: TvmSignMismatch) {
+            // Combinação de sinais inviável (PV e FV não opostos, ratio ≤ 0 no argumento de ln
+            // etc.). É o clássico `Error 5` do manual quando o usuário esquece um CHS.
+            return state.copy(pendingError = Hp12cError.TvmInvalidSigns)
         } catch (e: ArithmeticException) {
-            // Divisão por zero ou overflow na aritmética BCD — pilha preservada (regra 8).
+            // Divisão por zero, overflow na aritmética BCD, ou Newton-Raphson não convergiu —
+            // pilha preservada (regra 8).
             return state.copy(pendingError = Hp12cError.TvmNoConverge)
         }
 
@@ -367,7 +374,8 @@ internal class DefaultEngine : CalculatorEngine {
             Event.Financial.Solve.Fv  -> f.copy(fv  = result)
             Event.Financial.Solve.Pv  -> f.copy(pv  = result)
             Event.Financial.Solve.Pmt -> f.copy(pmt = result)
-            else -> f
+            Event.Financial.Solve.N   -> f.copy(n   = result)
+            Event.Financial.Solve.I   -> f.copy(i   = result)
         }
         val newStack = state.stack.copy(lastX = state.stack.x).pushValue(result)
         return state.copy(stack = newStack, financial = newFinancial)
@@ -423,6 +431,153 @@ internal class DefaultEngine : CalculatorEngine {
         val begAdj = if (isBegin) Hp12cDecimal.ONE + i else Hp12cDecimal.ONE
         return (-pv * factor - fv) / (begAdj * annuity)
     }
+
+    /**
+     * `n = ln(ratio) / ln(1+i)` com teto no final, onde
+     * `ratio = ((1+iS)·PMT - FV·i) / ((1+iS)·PMT + PV·i)` — algebricamente equivalente a
+     * isolar `n` na equação canônica da Seção 3 de `formulas/tvm.md` (derivação reproduzida
+     * no Apêndice E do manual e em Moretti Cap. 4 §§12).
+     *
+     * Casos especiais:
+     *
+     * - `i = 0` → equação linear: `0 = PV + n·PMT + FV`, logo `n = -(PV+FV)/PMT`. Se `PMT` também
+     *   é zero, a equação não tem solução em `n` (só tem solução se `PV = -FV`, e então `n`
+     *   é livre): sinal de `Error 5`.
+     * - `PMT = 0` → ratio reduz a `-FV·i / (PV·i) = -FV/PV` (o `i` cancela, mesma fórmula que
+     *   a linha do manual "Finding the Number of Periods (Simple Case)").
+     *
+     * A HP sempre **arredonda `n` para cima** (Moretti Ex. 12 p. 32-33 + nota em
+     * `test-vectors/tvm-vectors.json` tvm-003). A parte fracionária exata é recuperável via
+     * `RCL n f FRAC 30 ×`; fora de escopo para Fase 1.
+     *
+     * Lança [TvmSignMismatch] se o ratio for ≤ 0 (argumento inválido para `ln`) ou se o
+     * denominador for zero.
+     */
+    private fun computeN(
+        i: Hp12cDecimal, pv: Hp12cDecimal, pmt: Hp12cDecimal, fv: Hp12cDecimal, isBegin: Boolean,
+    ): Hp12cDecimal {
+        if (i.isZero()) {
+            if (pmt.isZero()) throw TvmSignMismatch()
+            val nRaw = -(pv + fv) / pmt
+            if (nRaw.compareTo(Hp12cDecimal.ZERO) <= 0) throw TvmSignMismatch()
+            return nRaw.ceil()
+        }
+        val begAdj = if (isBegin) Hp12cDecimal.ONE + i else Hp12cDecimal.ONE
+        val num = begAdj * pmt - fv * i
+        val den = begAdj * pmt + pv * i
+        if (den.isZero()) throw TvmSignMismatch()
+        val ratio = num / den
+        if (ratio.compareTo(Hp12cDecimal.ZERO) <= 0) throw TvmSignMismatch()
+        val nRaw = ratio.ln() / (Hp12cDecimal.ONE + i).ln()
+        return nRaw.ceil()
+    }
+
+    /**
+     * Resolve `i` na equação TVM canônica. Produz o resultado em **percentual** (o que a HP
+     * guarda em `financial.i`), não em decimal.
+     *
+     * Dois caminhos:
+     *
+     * 1. `PMT = 0` → forma fechada exata: `i = (-FV/PV)^(1/n) - 1 = exp(ln(-FV/PV) / n) - 1`.
+     *    É o que o manual descreve em "Finding the Periodic Interest Rate (Simple Case)" e é
+     *    exato em BCD de 10 dígitos dada a precisão estendida de `ln`/`exp`.
+     *
+     * 2. `PMT ≠ 0` → Newton-Raphson sobre a equação residual
+     *    `f(i) = PV + (1+iS)·PMT·(1-(1+i)^(-n))/i + FV·(1+i)^(-n)`
+     *    com derivada por diferença central (`h = 10⁻⁶`). Chute inicial `i₀ = 1%` funciona
+     *    para os cenários usuais (o manual também começa em 1% no algoritmo interno da HP).
+     *    Tolerância `|f(i)| < 10⁻⁸`, máximo 100 iterações. Se não converge, lança
+     *    [ArithmeticException] e o caller mapeia para `Hp12cError.TvmNoConverge`.
+     *
+     * Nota sobre `begAdj` no caso 2: como `begAdj = (1+i)` em BEGIN, ele depende de `i` e
+     * participa da derivada. A diferença central cuida disso sem precisar de derivação analítica.
+     */
+    private fun computeI(
+        n: Int, pv: Hp12cDecimal, pmt: Hp12cDecimal, fv: Hp12cDecimal, isBegin: Boolean,
+    ): Hp12cDecimal {
+        if (n <= 0) throw TvmSignMismatch()
+
+        // Caminho 1: forma fechada quando PMT = 0.
+        if (pmt.isZero()) {
+            if (pv.isZero()) throw TvmSignMismatch()
+            val ratio = -fv / pv
+            if (ratio.compareTo(Hp12cDecimal.ZERO) <= 0) throw TvmSignMismatch()
+            val iDec = (ratio.ln() / Hp12cDecimal.of(n)).exp() - Hp12cDecimal.ONE
+            return iDec * HUNDRED
+        }
+
+        // Caminho 2: Newton-Raphson com derivada por diferença central.
+        val tolerance = Hp12cDecimal.of("0.00000001")   // 10⁻⁸
+        val h = Hp12cDecimal.of("0.000001")             // 10⁻⁶
+        val two = Hp12cDecimal.of(2)
+        var iDec = Hp12cDecimal.of("0.01")              // chute inicial 1%
+
+        repeat(100) {
+            val fVal = tvmResidual(iDec, n, pv, pmt, fv, isBegin)
+            val fAbs = if (fVal.compareTo(Hp12cDecimal.ZERO) < 0) -fVal else fVal
+            if (fAbs < tolerance) return iDec * HUNDRED
+
+            val fPlus  = tvmResidual(iDec + h, n, pv, pmt, fv, isBegin)
+            val fMinus = tvmResidual(iDec - h, n, pv, pmt, fv, isBegin)
+            val df = (fPlus - fMinus) / (h * two)
+            if (df.isZero()) throw ArithmeticException("Newton-Raphson: derivada nula")
+            iDec -= fVal / df
+        }
+        throw ArithmeticException("Newton-Raphson não convergiu em 100 iterações")
+    }
+
+    /**
+     * Resíduo da equação TVM canônica (Seção 3 de `formulas/tvm.md`). Retorna zero exatamente
+     * quando `iDec` é a taxa-solução. Usado como `f(i)` do Newton-Raphson em [computeI].
+     *
+     * Limite degenerado `i = 0`: a equação vira `PV + n·PMT + FV`, forma linear.
+     */
+    private fun tvmResidual(
+        iDec: Hp12cDecimal, n: Int, pv: Hp12cDecimal, pmt: Hp12cDecimal, fv: Hp12cDecimal,
+        isBegin: Boolean,
+    ): Hp12cDecimal {
+        if (iDec.isZero()) {
+            return pv + Hp12cDecimal.of(n) * pmt + fv
+        }
+        val discount = (Hp12cDecimal.ONE + iDec).powInt(-n)
+        val annuity = (Hp12cDecimal.ONE - discount) / iDec
+        val begAdj = if (isBegin) Hp12cDecimal.ONE + iDec else Hp12cDecimal.ONE
+        return pv + begAdj * pmt * annuity + fv * discount
+    }
+
+    /**
+     * Arredondamento para cima (`ceiling`): inteiros ficam iguais, fracionários sobem ao
+     * próximo inteiro **na direção +∞** (para negativos, isso significa truncar para zero).
+     *
+     * Impl via `toString()` do actual class: o `toPlainString()` do JVM nunca usa notação
+     * científica, então `substringBefore('.')` isola a parte inteira. Para números negativos
+     * com parte fracionária (ex.: `-3.5 → -3`) o parse da parte inteira já dá `-3`, que é o
+     * ceil correto. Para positivos (`3.5 → 4`), somamos 1.
+     *
+     * **Onde entra:** aplicado ao final de [computeN] porque a HP sempre exibe `n` arredondado
+     * para cima (Moretti Ex. 12 + nota em `test-vectors/tvm-vectors.json` tvm-003).
+     */
+    private fun Hp12cDecimal.ceil(): Hp12cDecimal {
+        val s = toString()
+        val dotIdx = s.indexOf('.')
+        if (dotIdx < 0) return this
+        val intPart = s.substring(0, dotIdx)
+        val fracPart = s.substring(dotIdx + 1)
+        val hasNonZero = fracPart.any { it != '0' }
+        if (!hasNonZero) return Hp12cDecimal.of(intPart)
+        val intVal = intPart.toLong()
+        val result = if (s.startsWith("-")) intVal else intVal + 1
+        return Hp12cDecimal.of(result)
+    }
+
+    /**
+     * Exceção sentinela: sinaliza que a combinação de sinais dos registradores é incompatível
+     * com a equação TVM (ratio ≤ 0 em `Solve.N`/`Solve.I`, ou `n ≤ 0`). O caller no
+     * [reduceFinancialSolve] mapeia para [Hp12cError.TvmInvalidSigns]. Separada de
+     * [ArithmeticException] só para diferenciar "você esqueceu um CHS" (Error 5 imediato) de
+     * "o Newton-Raphson divergiu" (também Error 5, mas com semântica de "tentou e falhou").
+     */
+    private class TvmSignMismatch : ArithmeticException("TVM sign mismatch")
 
     /**
      * Converte um `Hp12cDecimal` em `Int` truncando a parte fracionária. Usado só para alimentar

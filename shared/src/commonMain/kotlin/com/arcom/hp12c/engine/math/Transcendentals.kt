@@ -1,27 +1,30 @@
 package com.arcom.hp12c.engine.math
 
 /**
- * Funções transcendentes (`ln`, `exp`, `pow`, `sqrt`) implementadas sobre [Hp12cDecimal]
- * com precisão compatível com os 10 dígitos BCD da HP 12C.
+ * Fachada das funções transcendentes `ln`, `exp`, `pow` e `sqrt` sobre [Hp12cDecimal].
  *
- * Stub de Fase 0. A implementação real entra na Fase 1 (para `pow`, necessária a TVM) e
- * se expande na Fase 2 (quando `LN`, `EXP`, `√x` ganham teclas próprias).
+ * A partir da Fase 1 passo 6, a aritmética real vive em [Hp12cDecimal.ln], [Hp12cDecimal.exp]
+ * e [Hp12cDecimal.pow] (impl em `jvmCommonMain` via `BigDecimal` com precisão estendida,
+ * stub em `iosMain`). Este objeto continua útil como ponto único de documentação e como
+ * lugar onde futuras funções sem contraparte na `expect class` (p.ex. `sqrt` na Fase 2)
+ * vão aterrissar.
  *
- * Decisão de design: não depender de `kotlin.math.*` — a biblioteca-padrão usa `Double`,
- * o que perde precisão após ~15 dígitos. Precisamos de séries/Newton sobre o próprio
- * `Hp12cDecimal` para manter fidelidade com a HP.
+ * Decisão de design reafirmada: nenhum uso de `kotlin.math.*` nem de `Double` — toda a
+ * aritmética passa pela `expect class`, preservando o invariante de 10 dígitos BCD com
+ * HALF_EVEN documentado em `referencias/bcd-rounding.md` da skill `hp12c-simulator`.
  */
 internal object Transcendentals {
 
-    fun ln(x: Hp12cDecimal): Hp12cDecimal =
-        TODO("Fase 1 — série de Taylor com redução de argumento, precisão 10 dígitos")
+    /** Logaritmo natural. Delega a [Hp12cDecimal.ln]. */
+    fun ln(x: Hp12cDecimal): Hp12cDecimal = x.ln()
 
-    fun exp(x: Hp12cDecimal): Hp12cDecimal =
-        TODO("Fase 1 — série de Taylor com redução por ln(2)/ln(10)")
+    /** Exponencial. Delega a [Hp12cDecimal.exp]. */
+    fun exp(x: Hp12cDecimal): Hp12cDecimal = x.exp()
 
-    fun pow(base: Hp12cDecimal, exponent: Hp12cDecimal): Hp12cDecimal =
-        TODO("Fase 1 — exp(exponent * ln(base)) com short-circuits para inteiros")
+    /** `base^exponent` com expoente arbitrário. Delega a [Hp12cDecimal.pow]. */
+    fun pow(base: Hp12cDecimal, exponent: Hp12cDecimal): Hp12cDecimal = base.pow(exponent)
 
+    /** Raiz quadrada via Newton-Raphson sobre [Hp12cDecimal]. Fase 2. */
     fun sqrt(x: Hp12cDecimal): Hp12cDecimal =
-        TODO("Fase 2 — Newton-Raphson sobre Hp12cDecimal")
+        TODO("Fase 2 — Newton-Raphson sobre Hp12cDecimal (tecla √x)")
 }

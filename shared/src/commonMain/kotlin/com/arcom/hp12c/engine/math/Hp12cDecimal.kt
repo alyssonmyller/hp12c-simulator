@@ -30,8 +30,25 @@ expect class Hp12cDecimal : Comparable<Hp12cDecimal> {
     /** `(1 + i)^n` com `n` inteiro; solução TVM fechada usa isso. Implementado na Fase 1 passo 1. */
     fun powInt(exponent: Int): Hp12cDecimal
 
-    /** `base^exponent` com expoente arbitrário; delega a `exp(exponent * ln(base))`. Fase 1 passo 2. */
+    /** `base^exponent` com expoente arbitrário; delega a `exp(exponent * ln(base))`. Fase 1 passo 6. */
     fun pow(exponent: Hp12cDecimal): Hp12cDecimal
+
+    /**
+     * Logaritmo natural. Lança [ArithmeticException] se `this ≤ 0` (o reducer captura e mapeia
+     * para `Hp12cError.LogOfNonPositive` ou `Hp12cError.TvmInvalidSigns`, conforme o contexto
+     * da tecla que originou o cálculo). Implementado via série arctanh com redução de argumento
+     * por potências de 2, precisão interna ≥ 13 dígitos arredondados ao final para 10 —
+     * ver `referencias/bcd-rounding.md` da skill `hp12c-simulator`.
+     */
+    fun ln(): Hp12cDecimal
+
+    /**
+     * Função exponencial `e^this`. Implementada via série de Taylor com redução de argumento
+     * por duplicação (`exp(x) = exp(x/2)²`), precisão interna ≥ 13 dígitos arredondados no
+     * final para 10. Overflow (argumento demasiado grande) propaga [ArithmeticException] —
+     * reducer captura e mapeia para `Hp12cError.TvmNoConverge` no contexto TVM.
+     */
+    fun exp(): Hp12cDecimal
 
     // --- Predicados / conversões ---
     fun isZero(): Boolean
