@@ -91,9 +91,66 @@ sealed class Event {
      *  quando o visor mostra "Error N". */
     object AcknowledgeError : Event()
 
-    // --- Placeholders Fase 2 (comentados propositalmente) ---
-    // sealed class Transcendental : Event() { object Ln, Exp, Sqrt, Reciprocal, YToX, NFactorial, Round, Integer, Fractional }
-    // sealed class Percent        : Event() { object Of, OfTotal, Delta }
+    // --- 5.7 Funções matemáticas e de alteração de números (Fase 2, bloco 1) ---
+    /**
+     * Funções matemáticas unárias (exceto [Power], que é binária) da Seção 7 do manual
+     * `bpia5314.pdf` (p. 85-87). Documentação canônica das fórmulas em
+     * `formulas/transcendentais.md` §3 e §4; vetores em
+     * `test-vectors/transcendentais-vectors.json`.
+     *
+     * Unárias (consomem X, produzem X, preservam Y/Z/T, preenchem `LASTx`):
+     *   [Reciprocal], [Square], [Sqrt], [Ln], [Exp], [Factorial], [Integer], [Fractional]
+     *
+     * Excepcional — **não** preenche `LASTx**:
+     *   [Round] — materializa o formato de display corrente no registrador X
+     *            (`formulas/transcendentais.md` §3.7). Único caso em que "LSTx" não
+     *            devolveria o valor pré-operação na HP física.
+     *
+     * Binária:
+     *   [Power] — `y^x`. Opera como uma binária clássica: consome Y e X, desce a pilha
+     *             (Z→Y, T fica sticky), preenche `LASTx`.
+     */
+    sealed class Transcendental : Event() {
+        object Reciprocal : Transcendental()  // [1/x]
+        object Square     : Transcendental()  // [g][x²]
+        object Sqrt       : Transcendental()  // [g][√x]
+        object Ln         : Transcendental()  // [g][LN]
+        object Exp        : Transcendental()  // [g][e^x]
+        object Factorial  : Transcendental()  // [g][n!]
+        object Round      : Transcendental()  // [f][RND]
+        object Integer    : Transcendental()  // [g][INT]
+        object Fractional : Transcendental()  // [g][FRAC]
+        object Power      : Transcendental()  // [y^x]  — binária
+    }
+
+    // --- 5.8 Funções de percentagem (Fase 2, bloco 1) ---
+    /**
+     * Três teclas de percentagem da Seção 2 do manual (p. 27-29). Documentação canônica em
+     * `formulas/transcendentais.md` §2.
+     *
+     * Todas são operações binárias sobre Y e X, mas distinguem-se pelo comportamento da pilha:
+     *
+     *   - [Of] (`%`) e [OfTotal] (`%T`) **retêm Y** — Y continua com o valor base/total
+     *     original após a operação (permite idioms como `300 ENTER 14 % −` para calcular valor
+     *     líquido em dois toques). Implementadas via `Stack.percentOp` de `StackOps.kt`.
+     *
+     *   - [Delta] (`Δ%`) desce a pilha como binária clássica (Z→Y, T sticky). Implementada
+     *     via `Stack.binaryOp`.
+     *
+     * Condição de erro: `y = 0` em [Delta] e [OfTotal] dispara Error 0 por paralelismo com
+     * divisão por zero (ambiguidade #2 documentada em §7 de `formulas/transcendentais.md`).
+     *
+     * Nomes `Of`/`OfTotal`/`Delta` preservam os placeholders originais deste arquivo (pré-
+     * Fase 2) e evitam colisão com o nome da sealed class `Percent` enclosing, que proibiria
+     * um `object Percent` nested.
+     */
+    sealed class Percent : Event() {
+        object Of      : Percent()  // [%]
+        object OfTotal : Percent()  // [%T]
+        object Delta   : Percent()  // [Δ%]
+    }
+
+    // --- Placeholders Fase 2 restantes (comentados propositalmente) ---
     // sealed class Statistics     : Event() { object SigmaPlus, SigmaMinus, Mean, StdDev, LinearRegression }
     // sealed class Calendar       : Event() { object Date, Dys, DmyMode, MdyMode }
     // sealed class Cashflow       : Event() { object CashFlowZero, CashFlowJ, CountJ, Npv, Irr }

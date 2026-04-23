@@ -1,0 +1,381 @@
+{
+  "schema_version": "1.0",
+  "description": "Vetores de teste para as funções matemáticas (Seção 7 do manual), de alteração de números e de percentagem (Seção 2). Cada vetor é uma entrada canônica para o reducer: monta a pilha via 'stack' (de baixo para cima em X, Y, Z, T), dispara a operação 'operation' e compara o X resultante com 'expected' (como string, renderizado conforme 'format'). Para vetores que devem disparar erro, 'expected' é omitido e 'error' carrega o código Error 0..9 esperado.",
+  "conventions": {
+    "stack_shape": "Array de strings com 1 a 4 elementos, onde o ÚLTIMO elemento é X (o visor) e os anteriores são Y, Z, T na ordem em que foram empilhados. Exemplo: ['300','14'] significa Y=300, X=14. Apenas os elementos preenchidos; níveis não citados são 0 (default após f CLEAR REG).",
+    "operation_codes": {
+      "reciprocal": "tecla [1/x]",
+      "square": "tecla [g][x²]",
+      "sqrt": "tecla [g][√x]",
+      "ln": "tecla [g][LN]",
+      "exp": "tecla [g][e^x]",
+      "factorial": "tecla [g][n!]",
+      "round": "tecla [f][RND] — depende do DisplayFormat corrente",
+      "int": "tecla [g][INT]",
+      "frac": "tecla [g][FRAC]",
+      "power": "tecla [y^x] — binária",
+      "percent": "tecla [%] — binária, retém y",
+      "delta_percent": "tecla [Δ%] — binária, desce pilha",
+      "percent_total": "tecla [%T] — binária, retém y"
+    },
+    "retain_y_note": "Para operações que retêm y (percent, percent_total), a coluna 'stack_after_y' pode ser checada: deve continuar igual ao y de entrada. Não testado em todos os vetores — ver vetores 'trans-pct-retain-*'."
+  },
+  "vectors": [
+    {
+      "id": "trans-pct-001",
+      "source": "manual, Seção 2, p. 27 (exemplo '300 ENTER 14 %')",
+      "description": "14% de 300. Exemplo canônico da função de percentagem.",
+      "stack": ["300", "14"],
+      "operation": "percent",
+      "expected": "42.00",
+      "format": "FIX 2"
+    },
+    {
+      "id": "trans-pct-retain-002",
+      "source": "manual, Seção 2, p. 27-28 (idiossincrasia stack-retain)",
+      "description": "Após '%', Y deve reter o valor base original (300), não ser consumido. Testa a idiossincrasia documentada em formulas/transcendentais.md §2.1.",
+      "stack": ["300", "14"],
+      "operation": "percent",
+      "expected": "42.00",
+      "format": "FIX 2",
+      "stack_after": { "y": "300" },
+      "notes": "Caminho típico de uso: '100 ENTER 20 % +' deve dar 120, porque 100 permaneceu em Y após %."
+    },
+    {
+      "id": "trans-pct-003",
+      "source": "manual, Seção 2, p. 28 (valor líquido com desconto)",
+      "description": "Preço base R$ 13.250 com 8% de desconto. Usa a sequência 'y ENTER x % −' que subtrai o desconto do valor líquido mantido em Y.",
+      "stack": ["13250", "8"],
+      "operation": "percent",
+      "expected": "1060.00",
+      "format": "FIX 2",
+      "notes": "Este vetor cobre apenas o cálculo de 8% (=1060). O valor líquido 13250 − 1060 = 12190 seria obtido com um '−' subsequente, que é aritmética e não entra neste bloco."
+    },
+    {
+      "id": "trans-dpct-001",
+      "source": "manual, Seção 2, p. 29 (exemplo preço de ação: 58,50 → 53,25)",
+      "description": "Variação percentual de 58,50 para 53,25. Resultado negativo = queda.",
+      "stack": ["58.5", "53.25"],
+      "operation": "delta_percent",
+      "expected": "-8.97",
+      "format": "FIX 2",
+      "notes": "100·(53.25 − 58.5)/58.5 = -8.974358… → FIX 2 = -8.97."
+    },
+    {
+      "id": "trans-pctt-001",
+      "source": "manual, Seção 2, p. 29 (exemplo vendas regionais)",
+      "description": "Europa = 2,36 sobre o total 7,95 (milhões). Resolver %T.",
+      "stack": ["7.95", "2.36"],
+      "operation": "percent_total",
+      "expected": "29.69",
+      "format": "FIX 2",
+      "notes": "100·2.36/7.95 = 29.6855… → FIX 2 = 29.69."
+    },
+    {
+      "id": "trans-recip-001",
+      "source": "manual, Seção 7, p. 86 (exemplo '.258 1/x = 3,88')",
+      "description": "Recíproco de 0,258.",
+      "stack": ["0.258"],
+      "operation": "reciprocal",
+      "expected": "3.88",
+      "format": "FIX 2"
+    },
+    {
+      "id": "trans-recip-002",
+      "source": "derivação trivial (consistência com formulas/transcendentais.md §3.1)",
+      "description": "Recíproco de 4 = 0,25.",
+      "stack": ["4"],
+      "operation": "reciprocal",
+      "expected": "0.25",
+      "format": "FIX 2"
+    },
+    {
+      "id": "trans-square-001",
+      "source": "derivação trivial (formulas/transcendentais.md §3.2)",
+      "description": "Quadrado de 5 = 25.",
+      "stack": ["5"],
+      "operation": "square",
+      "expected": "25.00",
+      "format": "FIX 2"
+    },
+    {
+      "id": "trans-sqrt-001",
+      "source": "derivação trivial (formulas/transcendentais.md §3.3)",
+      "description": "Raiz quadrada de 9 = 3.",
+      "stack": ["9"],
+      "operation": "sqrt",
+      "expected": "3.00",
+      "format": "FIX 2"
+    },
+    {
+      "id": "trans-sqrt-002",
+      "source": "manual, Seção 7, p. 85 (menciona √2 como exemplo de função matemática)",
+      "description": "Raiz quadrada de 2 — fronteira numérica (dígitos BCD exercidos até a última casa).",
+      "stack": ["2"],
+      "operation": "sqrt",
+      "expected": "1.414213562",
+      "format": "FIX 9",
+      "notes": "Valor de referência em 10 dígitos: 1,414213562. Em FIX 9 o display mostra 1,414213562 (mantissa completa usada pela BCD de 10 dígitos)."
+    },
+    {
+      "id": "trans-ln-001",
+      "source": "derivação trivial (formulas/transcendentais.md §3.4, caso LN(1)=0)",
+      "description": "Logaritmo natural de 1.",
+      "stack": ["1"],
+      "operation": "ln",
+      "expected": "0.00",
+      "format": "FIX 2"
+    },
+    {
+      "id": "trans-ln-002",
+      "source": "derivação trivial (consistência com Hp12cDecimal.ln do passo 5)",
+      "description": "Logaritmo natural de e (constante ≈ 2,718281828). LN(e) deve dar 1.",
+      "stack": ["2.718281828"],
+      "operation": "ln",
+      "expected": "1.00",
+      "format": "FIX 2",
+      "notes": "Valor interno FIX 9 ≈ 1,000000000 (tolerância HALF_EVEN de 1 ULP na última casa; a aproximação 2,718281828 é o e da HP12C em 10 dígitos)."
+    },
+    {
+      "id": "trans-exp-001",
+      "source": "derivação trivial (formulas/transcendentais.md §3.5, caso e^0 = 1)",
+      "description": "Exponencial natural de 0 = 1.",
+      "stack": ["0"],
+      "operation": "exp",
+      "expected": "1.00",
+      "format": "FIX 2"
+    },
+    {
+      "id": "trans-exp-002",
+      "source": "derivação trivial (consistência Hp12cDecimal.exp)",
+      "description": "Exponencial natural de 1 = e ≈ 2,72.",
+      "stack": ["1"],
+      "operation": "exp",
+      "expected": "2.72",
+      "format": "FIX 2",
+      "notes": "FIX 9 exibe 2,718281828."
+    },
+    {
+      "id": "trans-fact-001",
+      "source": "manual, Apêndice E, p. 205 (definição de n!)",
+      "description": "Fatorial de 5 = 120.",
+      "stack": ["5"],
+      "operation": "factorial",
+      "expected": "120.00",
+      "format": "FIX 2"
+    },
+    {
+      "id": "trans-fact-002",
+      "source": "derivação trivial (consistência)",
+      "description": "Fatorial de 10 = 3.628.800.",
+      "stack": ["10"],
+      "operation": "factorial",
+      "expected": "3628800.00",
+      "format": "FIX 2",
+      "notes": "Renderização HP12C com PERIOD_COMMA: '3,628,800.00'. Campo expected usa forma canônica sem milhar para facilitar comparação via strip-comma (igual ao pipeline de TVM)."
+    },
+    {
+      "id": "trans-fact-003",
+      "source": "manual, Apêndice E, p. 205 ('0! = 1') — ambiguidade #1 de formulas/transcendentais.md §7",
+      "description": "Fatorial de 0 = 1. Caso de borda: Apêndice D p. 195 literalmente inclui 'x ≤ 0' em Error 5, mas Apêndice E define 0!=1. Seguimos Apêndice E.",
+      "stack": ["0"],
+      "operation": "factorial",
+      "expected": "1.00",
+      "format": "FIX 2",
+      "notes": "Se a HP física de algum usuário disparar Error 5 aqui, esse vetor vira prova de divergência registrada — atualizar ambiguidade #1 em bcd-rounding.md."
+    },
+    {
+      "id": "trans-round-001",
+      "source": "manual, Seção 7, p. 85-86 (exemplo '3,875968992' em FIX 2 → RND)",
+      "description": "RND carimba o valor interno conforme o formato de display corrente. Em FIX 2, '3,875968992' vira '3,880000000' na memória (visível via f CLEAR PREFIX).",
+      "stack": ["3.875968992"],
+      "operation": "round",
+      "expected": "3.88",
+      "format": "FIX 2",
+      "notes": "Após RND, o X interno é 3,880000000 (não 3,88 — o BCD usa todas as 10 casas). O display FIX 2 mostra 3,88 de qualquer forma; o teste deve validar o X interno via Hp12cDecimal direto, não apenas o render. Ver ambiguidade #4 (RND em SCI/ENG) para casos não cobertos aqui."
+    },
+    {
+      "id": "trans-int-001",
+      "source": "manual, Seção 7, p. 85-86 (exemplo 'g INT' sobre 3,88)",
+      "description": "Parte inteira de 3,88 = 3.",
+      "stack": ["3.88"],
+      "operation": "int",
+      "expected": "3.00",
+      "format": "FIX 2"
+    },
+    {
+      "id": "trans-int-002",
+      "source": "derivação trivial (consistência de sinal)",
+      "description": "Parte inteira de -3,88 = -3 (truncamento em direção a zero).",
+      "stack": ["-3.88"],
+      "operation": "int",
+      "expected": "-3.00",
+      "format": "FIX 2"
+    },
+    {
+      "id": "trans-frac-001",
+      "source": "manual, Seção 7, p. 86 (exemplo 'g FRAC' sobre 3,88)",
+      "description": "Parte fracionária de 3,88 = 0,88.",
+      "stack": ["3.88"],
+      "operation": "frac",
+      "expected": "0.88",
+      "format": "FIX 2"
+    },
+    {
+      "id": "trans-frac-002",
+      "source": "derivação trivial (FRAC mantém o sinal de x)",
+      "description": "Parte fracionária de -3,88 = -0,88 (sinal preservado, consistente com x = INT(x) + FRAC(x)).",
+      "stack": ["-3.88"],
+      "operation": "frac",
+      "expected": "-0.88",
+      "format": "FIX 2"
+    },
+    {
+      "id": "trans-pow-001",
+      "source": "manual, Seção 7, p. 87 (exemplo '2 ENTER 1.4 y^x')",
+      "description": "2 elevado a 1,4.",
+      "stack": ["2", "1.4"],
+      "operation": "power",
+      "expected": "2.64",
+      "format": "FIX 2"
+    },
+    {
+      "id": "trans-pow-002",
+      "source": "manual, Seção 7, p. 87 (exemplo '2 ENTER 1.4 CHS y^x')",
+      "description": "2 elevado a -1,4 = 1/2^1,4.",
+      "stack": ["2", "-1.4"],
+      "operation": "power",
+      "expected": "0.38",
+      "format": "FIX 2"
+    },
+    {
+      "id": "trans-pow-003",
+      "source": "manual, Seção 7, p. 87 (exemplo '2 CHS ENTER 3 y^x')",
+      "description": "(-2) elevado a 3 = -8. Permitido porque x é inteiro.",
+      "stack": ["-2", "3"],
+      "operation": "power",
+      "expected": "-8.00",
+      "format": "FIX 2"
+    },
+    {
+      "id": "trans-pow-004",
+      "source": "manual, Seção 7, p. 87 (exemplo '2 ENTER 3 1/x y^x' = raiz cúbica de 2)",
+      "description": "Raiz cúbica de 2 = 2^(1/3) ≈ 1,26.",
+      "stack": ["2", "0.3333333333"],
+      "operation": "power",
+      "expected": "1.26",
+      "format": "FIX 2",
+      "notes": "A tecla '1/x' sobre x=3 produz 0,3333333333 (10 dígitos BCD). O teste pode emular isso empilhando 3, aplicando 'reciprocal', e então 'power'; ou empilhar 0,3333333333 direto como aqui. Ambos os caminhos convergem para 1,26 em FIX 2."
+    },
+    {
+      "id": "trans-err-sqrt-neg",
+      "source": "manual, Apêndice D, p. 193 (Error 0: √x com x<0)",
+      "description": "Raiz quadrada de número negativo dispara Error 0.",
+      "stack": ["-1"],
+      "operation": "sqrt",
+      "error": "Error 0",
+      "format": "FIX 2"
+    },
+    {
+      "id": "trans-err-ln-zero",
+      "source": "manual, Apêndice D, p. 193 (Error 0: LN com x≤0)",
+      "description": "Logaritmo natural de zero dispara Error 0.",
+      "stack": ["0"],
+      "operation": "ln",
+      "error": "Error 0",
+      "format": "FIX 2"
+    },
+    {
+      "id": "trans-err-ln-neg",
+      "source": "manual, Apêndice D, p. 193 (Error 0: LN com x≤0)",
+      "description": "Logaritmo natural de número negativo dispara Error 0.",
+      "stack": ["-5"],
+      "operation": "ln",
+      "error": "Error 0",
+      "format": "FIX 2"
+    },
+    {
+      "id": "trans-err-recip-zero",
+      "source": "manual, Apêndice D, p. 193 (Error 0: 1/x com x=0)",
+      "description": "Recíproco de zero dispara Error 0.",
+      "stack": ["0"],
+      "operation": "reciprocal",
+      "error": "Error 0",
+      "format": "FIX 2"
+    },
+    {
+      "id": "trans-err-pow-neg-frac",
+      "source": "manual, Apêndice D, p. 193 (Error 0: y<0 ∧ x não inteiro)",
+      "description": "(-2)^0,5 = √(-2) é complexo → Error 0.",
+      "stack": ["-2", "0.5"],
+      "operation": "power",
+      "error": "Error 0",
+      "format": "FIX 2"
+    },
+    {
+      "id": "trans-err-pow-zero-neg",
+      "source": "manual, Apêndice D, p. 193 (Error 0: y=0 ∧ x≤0)",
+      "description": "0^(-1) = 1/0 → Error 0.",
+      "stack": ["0", "-1"],
+      "operation": "power",
+      "error": "Error 0",
+      "format": "FIX 2"
+    },
+    {
+      "id": "trans-err-fact-neg",
+      "source": "manual, Apêndice D, p. 195 (Error 5: n! com x<0)",
+      "description": "(-3)! é indefinido → Error 5 (idiossincrasia histórica da HP: fatorial está sob Erro 5, não Erro 0).",
+      "stack": ["-3"],
+      "operation": "factorial",
+      "error": "Error 5",
+      "format": "FIX 2"
+    },
+    {
+      "id": "trans-err-fact-frac",
+      "source": "manual, Apêndice D, p. 195 (Error 5: n! com x não inteiro)",
+      "description": "2,5! não é definido na HP12C (não aceita fracionário, não usa Γ(x)) → Error 5.",
+      "stack": ["2.5"],
+      "operation": "factorial",
+      "error": "Error 5",
+      "format": "FIX 2",
+      "notes": "HP12C restringe n! a inteiros não-negativos; para fatorial generalizado via função Gama, usar a equivalência ln(Γ(x+1)) manualmente, que não faz parte do teclado."
+    }
+  ],
+  "meta": {
+    "total_vectors": 34,
+    "by_operation": {
+      "percent": 3,
+      "delta_percent": 1,
+      "percent_total": 1,
+      "reciprocal": 3,
+      "square": 1,
+      "sqrt": 3,
+      "ln": 4,
+      "exp": 2,
+      "factorial": 5,
+      "round": 1,
+      "int": 2,
+      "frac": 2,
+      "power": 6,
+      "total_ok": 26,
+      "total_error": 8
+    },
+    "by_error_code": {
+      "Error 0": 6,
+      "Error 5": 2
+    },
+    "by_source": {
+      "manual (bpia5314.pdf)": 20,
+      "derivação trivial (consistência)": 14,
+      "moretti": 0,
+      "furg": 0
+    },
+    "ambiguities_see": "formulas/transcendentais.md §7 e referencias/bcd-rounding.md",
+    "coverage_gaps_known": [
+      "RND em SCI/ENG (formato diferente) — entrar em vetores futuros quando ambiguidade #4 estiver resolvida",
+      "e^x overflow (Error 1) — x=231 é borderline, testar em Fase 2 dedicada a códigos de erro",
+      "n! overflow (70! → Error 1) — idem acima",
+      "% e %T com y=0 (ambiguidade #2 de §7) — vetores marcados como 'TODO' até decisão firme da engine"
+    ]
+  }
+}

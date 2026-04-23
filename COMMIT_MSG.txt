@@ -1,124 +1,202 @@
-feat(engine): add Transcendentals (ln/exp/pow) + Solve.N/Solve.I (passo 6)
+feat(engine): transcendentais + percentagens — Fase 2 bloco 1 implementação (passo 10)
 
-Destrava as 2 últimas variantes de `Event.Financial.Solve` e fecha os
-5 vetores que faltavam em `tvm-vectors.json` (tvm-003, -004, -014,
--015, -016 — n e i com PMT=0). Ficam restritas ao passo 7
-(DisplayFormatter) apenas as comparações fim-a-fim com strings
-formatadas; a parte `reduce` da engine cobre agora 18/18 vetores.
+Fecha o Bloco 1 da Fase 2 transformando os 34 vetores e as 7 seções
+do paperwork do passo 9 em código executável. Engine agora responde
+a 13 teclas novas (`1/x`, `x²`, `√x`, `LN`, `e^x`, `n!`, `RND`, `INT`,
+`FRAC`, `y^x`, `%`, `Δ%`, `%T`) com fidelidade bit-a-bit às regras
+rastreáveis do manual `bpia5314.pdf` (Seção 7 + Seção 2 + Apêndices
+D/E). **Nota de execução**: `:shared:jvmTest` ainda não rodou neste
+sandbox — `services.gradle.org` bloqueado por proxy; validação final
+fica para a próxima máquina dev (ver checklist no fim).
 
-## `Hp12cDecimal` ganha ln / exp / pow
+## 1. `Event.Transcendental.*` e `Event.Percent.*` concretizados
 
-Três novos membros na `expect class` (`commonMain`), impl real em
-`jvmCommonMain` sobre `BigDecimal` em precisão estendida
-`MathContext(13, HALF_EVEN)` com arredondamento final em
-`MathContext(10, HALF_EVEN)`. Justificativa em
-`.claude/skills/hp12c-simulator/referencias/bcd-rounding.md`: séries
-transcendentais precisam de ≥ 3 dígitos de gordura acima dos 10 do
-contrato BCD para que o décimo dígito arredonde estavelmente em
-HALF_EVEN.
+`commonMain/engine/event/Event.kt` ganhou 13 `data object` novos,
+todos comentários em pt-BR com referência ao manual:
 
-  - `ln(x)` — redução de argumento por divisão por 2 até `x ∈ [1, 2)`,
-    depois série arctanh `2·Σ t^(2k+1)/(2k+1)` com `t = (x-1)/(x+1)`
-    (convergência geométrica com `|t| < 1/3` nesse intervalo);
-    reconstrução via `ln(x) = k·ln(2) + série`, com `ln(2)`
-    pré-computado a 25 dígitos. Lança `ArithmeticException` para
-    `x ≤ 0`.
-  - `exp(x)` — duplicação reversa (`y = x/2^k` até `|y| < 0.5`), Taylor
-    `Σ yⁿ/n!` com tolerância `1E-14`, depois `k` elevações ao
-    quadrado. Overflow (`k > 400`) lança `ArithmeticException`.
-  - `pow(base, expoent)` — trata edges do Apêndice D (Error 0):
-    `0^x≤0` e base negativa com expoente não-inteiro lançam; expoente
-    exatamente inteiro (detectado via `BigDecimal.toBigIntegerExact`)
-    delega a `powInt` para preservar exatidão tipo `2^10 = 1024`; caso
-    geral compõe `exp(expoent · ln(base))` em precisão estendida.
+- `Event.Transcendental.{Reciprocal, Square, Sqrt, Ln, Exp, Factorial,
+  Int, Frac, Round, Power}` — 9 unárias + 1 binária (`Power` é `y^x`).
+- `Event.Percent.{Of, Delta, OfTotal}` — 3 binárias (`%`, `Δ%`, `%T`).
 
-Stub `iosMain` atualizado com `actual fun ln/exp = todoIos()` — Fase 4
-substitui por `kotlin-multiplatform-bignum` ou impl manual.
+Os placeholders comentados desde o passo 3 foram substituídos por
+`sealed class` concretas com doc rastreável: cada evento tem uma
+linha citando `formulas/transcendentais.md §N` e a página do manual.
+API pública da Fase 2 permanece **puramente aditiva** — nenhum evento
+da Fase 1 foi renomeado ou movido.
 
-`Transcendentals` vira fachada fina (`ln(x) = x.ln()`, etc.) com
-`sqrt` reservado para Fase 2 (tecla √x via Newton-Raphson sobre
-`Hp12cDecimal`).
+## 2. `reduceTranscendental` + `reducePercent` em `DefaultEngine`
 
-## `DefaultEngine.reduceFinancialSolve` — 5 variantes fechadas
+~130 linhas novas no `DefaultEngine.kt`:
 
-Guarda `TODO` removida; dispatcher passa a tratar as 5 variantes
-(Fv/Pv/Pmt do passo 5 + N/I deste passo).
+- **Dispatcher** no entrypoint: `is Event.Transcendental ->
+  reduceTranscendental(state.commitEntry(), event)` e
+  `is Event.Percent -> reducePercent(state.commitEntry(), event)`.
+  `commitEntry()` finaliza qualquer buffer antes da operação —
+  consistente com `Arith`/`Financial.Solve` da Fase 1.
 
-`computeN(i, pv, pmt, fv, isBegin)`:
+- **reduceTranscendental** aplica `stack.unaryOp`/`binaryOp` dos
+  helpers já prontos do passo 2, escolhendo por família:
+  - `Reciprocal, Square, Sqrt, Ln, Exp, Factorial, Int, Frac` →
+    `unaryOp { x -> ... }` — preenchem `LASTx` normalmente.
+  - `Round` → caso **especial** sem LASTx: lê `state.display`
+    para descobrir casas decimais, chama `applyRound(x, display)`,
+    atualiza só `stack.x` preservando `lastX` antigo (regra
+    excepcional manual p. 86 / `stack-behavior.md`).
+  - `Power` (y^x) → `binaryOp` — desce a pilha normalmente.
 
-  n = ln(((1+iS)·PMT - FV·i) / ((1+iS)·PMT + PV·i)) / ln(1+i)
+- **reducePercent** usa os três helpers distintos conforme a
+  idiossincrasia do §6 das fórmulas:
+  - `Of` (`%`) → `stack.percentOp { y, x -> y * x / 100 }` — retém Y.
+  - `OfTotal` (`%T`) → `stack.percentOp { y, x -> x * 100 / y }` —
+    retém Y (`y = 7.95`, `x = 2.36` → `29.69`).
+  - `Delta` (`Δ%`) → `stack.binaryOp { y, x -> (x - y) * 100 / y }`
+    — **desce** a pilha (binária clássica, ver §2.2 das fórmulas).
 
-arredondado pra cima via nova extensão privada `Hp12cDecimal.ceil()`
-(parse por `toString()`): HP sempre exibe teto de `n` mesmo quando
-fração já é quase inteira (Moretti Ex. 12, nota em tvm-003 na skill).
-Ramo degenerado `i=0` cai em `n = -(PV+FV)/PMT` seguido de teto.
+- **Mapeamento de erros** via try/catch por família (pilha preservada
+  em todo caso, regra 8 da Seção 5 de `stack-behavior.md`):
+  - `ArithmeticException` genérica → `Hp12cError.InvalidOperation`
+    (Error 0) — cobre `1/0`, `√(-1)`, `LN(0)`, `LN(-5)`, `(-2)^0.5`,
+    `0^(-1)`, `Δ%/%T` com `y=0`, etc.
+  - `FactorialDomainException` (sentinela interna) →
+    `Hp12cError.FactorialDomain` (Error 5) — `(-3)!`, `2.5!`.
+  - Overflow de `e^x`/`n!`/`y^x` grande → `ArithmeticException`
+    do `MathContext(10, …)` quando excede faixa BCD → `Error 0`
+    (conservador; refinamento para Error 1 fica aberto, ambiguidade
+    #2 de `referencias/error-codes.md`).
 
-`computeI(n, pv, pmt, fv, isBegin)`:
+- **Helpers privados novos**:
+  - `factorial(x)` — recursão de 2..n com guard `n>69` (overflow BCD);
+    `n<0` ou `n∉ℤ` lança `FactorialDomainException`; `0!=1` e `1!=1`
+    como caso base (ambiguidade #1 resolvida a favor do Apêndice E).
+  - `applyRound(x, display)` — ponte `FIX n` → `x.round(n)` sobre
+    `Hp12cDecimal`; `SCI n`/`ENG n` arredondam `n+1` significativos
+    da mantissa (ambiguidade #4 do §7).
+  - `truncateTowardsZero(x)` — base de `INT` (`INT(-3.88) = -3`) e
+    de `FRAC` (via `x - INT(x)` para manter sinal: `FRAC(-3.88) =
+    -0.88`, vetor bandeira `trans-frac-002`).
+  - `errorForTranscendental(exception)` — fan-out único do mapeamento
+    Exception → Hp12cError, facilita auditoria.
 
-  - PMT = 0:  i = exp(ln(-FV/PV)/n) - 1   (fechado exato; cobre
-                                            tvm-004 e tvm-014)
-  - PMT ≠ 0:  Newton-Raphson com derivada por diferença central
-              (h = 10⁻⁶, tolerância 10⁻⁸, máx 100 iterações,
-              chute i₀ = 1%)
+## 3. `Hp12cDecimal.sqrt()` — real em JVM, stub em iOS
 
-residual via `tvmResidual(i, n, pv, pmt, fv, isBegin) = PV + (1+iS)·
-PMT·(1-(1+i)^(-n))/i + FV·(1+i)^(-n)`.
+`commonMain/engine/math/Hp12cDecimal.kt`: nova entrada na
+`expect class` (`fun sqrt(): Hp12cDecimal`) — interface fechada cresce
+em 1 método.
 
-Resultado sempre multiplicado por 100 antes de entrar em `stack.x` e
-`financial.i` — convenção de `i` em percentual reafirmada no passo 4.
+`jvmCommonMain/.../Hp12cDecimal.kt`: `actual fun sqrt()` delega direto
+para `java.math.BigDecimal.sqrt(MathContext(10, HALF_EVEN))`.
+Ambiguidade #6 de `formulas/transcendentais.md §7` explicita:
+`pow(0.5)` via caminho genérico `exp(0.5·ln(x))` acumula 1-2 ULP na
+última casa e quebra `trans-sqrt-002` (√2 em FIX 9); `BigDecimal.sqrt`
+é a única forma de permanecer bit-idêntico à HP física. Argumento
+negativo propaga `ArithmeticException` nativo, mapeado no reducer.
 
-## Erros diferenciados — Error 5 em duas saídas
+`iosMain/.../Hp12cDecimal.kt`: `actual fun sqrt() = todoIos()` —
+mesmo padrão dos outros transcendentais, desbloqueia na Fase 4 com
+`kotlin-multiplatform-bignum` ou impl manual.
 
-Exceção sentinela interna `TvmSignMismatch : ArithmeticException` para
-`ratio ≤ 0` (Solve.N) e `n ≤ 0` ou `ratio ≤ 0` (Solve.I), mapeada para
-`Hp12cError.TvmInvalidSigns` — "você esqueceu um CHS, seus fluxos de
-caixa têm o mesmo sinal". `ArithmeticException` genérica (divisão por
-zero em (1+i)=0, overflow BCD, Newton não converge em 100 iterações)
-mapeada para `Hp12cError.TvmNoConverge`. Pilha preservada nos dois
-casos (regra 8).
+## 4. `Hp12cError.FactorialDomain` — novo código-5
 
-## Pós-condições de Solve.N/Solve.I
+`commonMain/engine/error/Hp12cError.kt`: novo `data object` no grupo
+Error 5 (`val code: Int = 5`), irmão de `TvmInvalidSigns`. Justificativa
+no manual: Apêndice D p. 195 lista explicitamente "factorial de número
+não-inteiro ou negativo" como Error 5 (não Error 0 como sugeriria
+"operação matemática inválida"). Decisão tomada no passo 9 (§3.6 de
+`formulas/transcendentais.md`), concretizada aqui.
 
-  - `Solve.N` armazena o **teto** em `financial.n` (igual ao visor —
-    RCL N pós-Solve.N devolve 14, não 13.65)
-  - `Solve.I` armazena em `financial.i` em **percentual**
-  - ambos destroem X com `LASTx ← X antigo` e empurram resultado via
-    `pushValue` (regras 4-5 de `referencias/stack-behavior.md`)
+Motivo de separar de `TvmInvalidSigns`: embora ambos sejam código 5,
+a `reason` é semanticamente distinta ("TVM com PV e FV mesmo sinal"
+vs "fatorial de domínio inválido") e o usuário da API ganha em poder
+discriminar sem depender só do código numérico.
 
-## Testes
+## 5. `TranscendentalsVectorsTest` — 34 vetores ponta-a-ponta
 
-  - shared/src/commonTest/.../engine/math/TranscendentalsTest.kt
-    (novo, 19 casos):
-      - ln: ln(1)=0, ln(2)≈0.6931471806, ln(10)≈2.302585093,
-        ln(e)≈1, ln(0.5)=-ln(2); ln(0) e ln(-1) lançam.
-      - exp: exp(0)=1, exp(1)≈2.718281828, exp(10)≈22026.46580,
-        exp(-1)≈0.3678794412.
-      - round-trip (1.04)^5 via powInt vs via exp(5·ln(1.04))
-        (tolerância 10⁻⁶).
-      - pow: 2^10=1024 e 10^-2=0.01 exatos via powInt; 4^0.5≈2
-        via exp/ln; 0^5=0; (-2)^3=-8 via powInt; edges que lançam
-        (0^0, 0^-1, (-2)^0.5).
-      - sanidade da fachada `Transcendentals`.
+**Novos arquivos em `commonTest/`:**
 
-  - shared/src/commonTest/.../engine/ReducerFinancialSolveTest.kt
-    (+10 casos, 23 → 33):
-      - 3 Solve.N: tvm-003, tvm-015, tvm-016 (todos com teto).
-      - 2 Solve.I: tvm-004, tvm-014 (forma fechada PMT=0).
-      - 2 updates de registrador (`financial.n` = teto,
-        `financial.i` = percentual).
-      - 2 LSTx pós-Solve.N/Solve.I.
-      - 2 sinais inválidos (Solve.N e Solve.I com PV e FV
-        mesmo sinal → `Hp12cError.TvmInvalidSigns`, pilha
-        intacta, registrador-alvo permanece `null`).
+- `testing/TranscendentalsVectorJson.kt` (~50 linhas) —
+  `@Serializable internal data class` companheiros:
+  `TranscendentalsVectorsFile` (wrapper) e `TranscendentalsVectorJson`
+  (`id`, `source`, `description`, `stack: List<String>`, `operation:
+  String`, `expected: String?`, `error: String?`, `format: String`,
+  `stack_after: Map<String, String>? = null`, `notes: String? = null`).
+  Reusa o `internal val VectorsJson: Json` do `TvmVectorJson.kt` com
+  `ignoreUnknownKeys = true` — uma única configuração de `Json` no
+  module de teste.
 
-  - TvmVectorsTest.tvm_001 continua vermelho — aguarda
-    DisplayFormatter no passo 7. Mas `reduce` agora cobre 18/18.
+- `engine/TranscendentalsVectorsTest.kt` (~200 linhas, 34 `@Test`) —
+  mirror do `TvmVectorsTest` adaptado ao schema RPN:
+  - `companion object` com `by lazy` cache do JSON (uma leitura I/O
+    para todos os 34 testes).
+  - 34 `@Test trans_XXX_descricao()` cada uma de uma linha
+    (`runVector("trans-XXX")`) — mesmo padrão do passo 8.
+  - Helpers próprios:
+    - `stackFromList(xs: List<String>): Stack` — último elem = X,
+      anteriores preenchem Y/Z/T de baixo para cima, zeros no resto,
+      `stackLiftEnabled = true`, `isEntering = false`, `lastX = ZERO`.
+    - `operationToEvent(op: String): Event` — mapa literal JSON →
+      Event: `"reciprocal"` → `Reciprocal`, `"sqrt"` → `Sqrt`,
+      `"percent"` → `Percent.Of`, `"delta_percent"` → `Percent.Delta`,
+      `"percent_total"` → `Percent.OfTotal`, `"power"` → `Power`, etc.
+      Erro explícito se alguém renomear o literal do JSON sem atualizar
+      o mapa — dupla-de-freios, não silenciosamente-passa.
+    - `parseFormat(fmt: String): DisplayFormat` — `"FIX n"`/`"SCI n"`/
+      `"ENG n"` idêntico ao helper do `TvmVectorsTest`.
+    - `parseErrorCode(raw: String): Int?` — extrai N de `"Error N"`.
+  - `runVector(id)` dispatcha por tipo de vetor:
+    - **Caminho-erro** (`error != null`): assert `state.pendingError
+      != null`, `state.pendingError.code == código esperado`.
+    - **Caminho-feliz** (`expected != null`): render do display em
+      `PERIOD_COMMA`, strip de vírgulas, compara com `expected`
+      (mesmo pipeline do passo 8).
+    - **Caminho-stack** (`stack_after != null`): compara `Hp12cDecimal`
+      por **valor** via `.equals` (que usa `compareTo == 0`, então
+      `of("300") == of("300.00")` — fragile-string-normalization
+      evitada). Chave `"y"` bate com `state.stack.y`, etc.
 
-## PROMPT_MESTRE.md
+**Vetores-bandeira de ambiguidade** todos com teste próprio:
+- `trans-fact-003` — `0! = 1` (Apêndice E vence sobre Apêndice D).
+- `trans-frac-002` — `FRAC(-3.88) = -0.88` (sinal preservado).
+- `trans-pct-retain-002` — `300 ENTER 15 %` deixa Y = 300.
 
-Linha de passo 6 adicionada em Seção 6 (progresso); Seção 7
-redirecionada para passo 7 (DisplayFormatter), com plano concreto de
-FIX/SCI/ENG/NumericSeparator + render de `Error n` + teste fim-a-fim
-destravando `TvmVectorsTest.tvm_001`.
+**Convenção de identificadores**: `trans_dpct_001_delta_pct_acoes`
+(não `ações`) — ASCII only em nomes de função Kotlin, pt-BR só em
+docstrings/comentários, padrão do projeto.
+
+**Total da suíte (projeção)**: 185 → **≈219** casos de teste
+(185 da Fase 1 + 34 novos da TranscendentalsVectorsTest). Unit tests
+adicionais de `Hp12cDecimal.sqrt` não foram escritos neste passo —
+os 3 vetores happy-path de `sqrt` (`trans-sqrt-001..003`) cobrem via
+integração; teste unitário dedicado fica como débito técnico se a
+coverage não satisfizer.
+
+## Execução pendente: `:shared:jvmTest` em máquina com rede aberta
+
+`./gradlew :shared:jvmTest` não rodou neste sandbox: o proxy Cowork
+bloqueia `services.gradle.org` (HTTP 403 no CONNECT), impedindo o
+wrapper de baixar o distrib do Gradle 9.3.1. `kotlinc`/`gradle`
+locais não estão disponíveis. Nenhum workaround é aceitável —
+rodar em ambiente dev é o checklist #1 de fechamento do passo.
+
+**Hipótese de trabalho**: verifiquei manualmente por inspeção o chain
+completo para os 3 vetores-bandeira (`Event → reducer → StackOps →
+Hp12cDecimal`) e os tipos batem, imports resolvem, pilha e LASTx
+evoluem conforme o esperado. Mas não há substituto para ver o CI
+verde — se quebrar na execução real, o fix é um passo 10.1 dedicado.
+
+## Invariantes preservados
+
+- **#1 — 10 dígitos BCD HALF_EVEN**: `sqrt` usa `MathContext(10,
+  HALF_EVEN)` nativo do `BigDecimal`; `factorial` opera inteiro até
+  overflow; `round`/`int`/`frac` apoiam-se em `Hp12cDecimal` já
+  arredondado. `pow(0.5)` explicitamente proibido (ambiguidade #6).
+- **#2 — 10 códigos `Error`**: aditivo puro — novo membro
+  `FactorialDomain` no grupo 5, zero códigos da Fase 1 movidos/renomeados.
+- **#3 — pilha RPN 4 níveis + LASTx**: três cenários distintos
+  honrados (unária-com-LASTx, unária-sem-LASTx para `RND`,
+  binária-que-retém-Y para `%`/`%T`).
+- **#4 — todo exemplo resolvido é teste**: 34 vetores no JSON,
+  20 diretamente do manual bpia5314.pdf p. 27-29 e 85-87; todos
+  cobertos por `@Test` individual no `TranscendentalsVectorsTest`.
+- **#5 — memória contínua**: escopo Fase 4, não tocado.
 
 Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>

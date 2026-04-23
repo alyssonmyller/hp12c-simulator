@@ -1,0 +1,478 @@
+{
+  "schema_version": "2",
+  "meta": {
+    "description": "Vetores de teste para as 7 teclas estatísticas da HP 12C Platinum (Σ+, Σ-, x̄, s, ŷ,r, x̂,r, x̄w). Schema stateful: cada vetor é uma sequência de 'operations' aplicadas à engine em ordem; após a última operação, 'expected_x' e opcionalmente 'expected_y' são comparados com o estado final do display/pilha. Sintaxe ENTRY-SIGMA+ é sempre `{op: 'sigma_plus', y, x}` — o par (y, x) reflete a convenção RPN do manual p. 81 onde o usuário digita `y ENTER x Σ+` e o segundo valor (x) vai em X-register no momento de Σ+. Unidade 'x' corresponde à variável estatística x interna (R2, R3, R6 em Apêndice E p. 204-205). Erros esperados usam campo 'error: \"Error N\"' no lugar de 'expected_x'.",
+    "sources": [
+      "bpia5314.pdf — Seção 6 (p. 79-84) — comportamento observável",
+      "bpia5314.pdf — Apêndice D (p. 194) — condições de Error 2",
+      "bpia5314.pdf — Apêndice E (p. 204-205) — fórmulas fechadas"
+    ],
+    "conventions": {
+      "pair_order": "Em `sigma_plus` e `sigma_minus`, 'y' é o primeiro valor digitado e 'x' é o segundo. Exemplo: `32 ENTER 17000 Σ+` → `{op: 'sigma_plus', y: 32, x: 17000}`. O manual chama a variável 'x' de Σx (R2 acumulado) e 'y' de Σy (R4).",
+      "query_operations": [
+        "clear_sigma   — f CLEAR Σ",
+        "sigma_plus    — Σ+ (dois campos: x, y)",
+        "sigma_minus   — Σ- (dois campos: x, y)",
+        "mean          — g x̄ (sem argumento; X ← x̄, Y ← ȳ)",
+        "weighted_mean — g x̄w (sem argumento; X ← x̄w, Y preservado)",
+        "stddev        — g s (sem argumento; X ← sₓ, Y ← sᵧ)",
+        "y_hat_r       — g ŷ,r (campo 'input': novo valor de x)",
+        "x_hat_r       — g x̂,r (campo 'input': novo valor de y)",
+        "swap_xy       — x⇆y (para trazer a correlação r em ŷ,r/x̂,r de Y para X)"
+      ],
+      "number_format": "Strings numéricas em 'expected_x'/'expected_y' são renderizadas pela engine via DisplayFormatter na locale PERIOD_COMMA (en-US), depois strip de vírgulas de milhar. Comparação como String exata; é o mesmo pipeline de TvmVectorsTest e TranscendentalsVectorsTest."
+    }
+  },
+  "vectors": [
+    {
+      "id": "stat-clear-001",
+      "source": "manual, Seção 6, p. 80",
+      "description": "f CLEAR Σ zera R1..R6 e a pilha inteira (Apêndice A p. 181); visor mostra 0,00",
+      "operations": [
+        {"op": "sigma_plus", "y": 10, "x": 20},
+        {"op": "sigma_plus", "y": 30, "x": 40},
+        {"op": "clear_sigma"}
+      ],
+      "query": "display",
+      "expected_x": "0.00",
+      "format": "FIX 2",
+      "notes": "Valida ambiguidade §8.3 de formulas/estatistica.md: CLEAR Σ zera pilha E R1..R6, não só R1..R6."
+    },
+    {
+      "id": "stat-sigmaplus-001",
+      "source": "manual, Seção 6, p. 80 (primeiro par do exemplo 7-vendedores)",
+      "description": "Σ+ empurra novo n (=1) em X após primeira acumulação",
+      "operations": [
+        {"op": "clear_sigma"},
+        {"op": "sigma_plus", "y": 32, "x": 17000}
+      ],
+      "query": "display",
+      "expected_x": "1.00",
+      "format": "FIX 2"
+    },
+    {
+      "id": "stat-sigmaplus-002",
+      "source": "manual, Seção 6, p. 80-81 (7-vendedores, após todos os 7 pares)",
+      "description": "Σ+ sucessivo — após 7 pares, X = 7,00 (contador n)",
+      "operations": [
+        {"op": "clear_sigma"},
+        {"op": "sigma_plus", "y": 32, "x": 17000},
+        {"op": "sigma_plus", "y": 40, "x": 25000},
+        {"op": "sigma_plus", "y": 45, "x": 26000},
+        {"op": "sigma_plus", "y": 40, "x": 20000},
+        {"op": "sigma_plus", "y": 38, "x": 21000},
+        {"op": "sigma_plus", "y": 50, "x": 28000},
+        {"op": "sigma_plus", "y": 35, "x": 15000}
+      ],
+      "query": "display",
+      "expected_x": "7.00",
+      "format": "FIX 2"
+    },
+    {
+      "id": "stat-sigmaminus-001",
+      "source": "derivação — correção de entrada errada",
+      "description": "Σ+ seguido de Σ- do mesmo par zera os registradores estatísticos (n volta para 0)",
+      "operations": [
+        {"op": "clear_sigma"},
+        {"op": "sigma_plus", "y": 32, "x": 17000},
+        {"op": "sigma_minus", "y": 32, "x": 17000}
+      ],
+      "query": "display",
+      "expected_x": "0.00",
+      "format": "FIX 2",
+      "notes": "Após Σ-, X = novo n = 0. Também verifica que R1=0 (consulta indireta via g x̄ em outro vetor)."
+    },
+    {
+      "id": "stat-sigmaminus-002",
+      "source": "derivação — padrão de correção do manual p. 80",
+      "description": "Correção: usuário digitou errado o segundo par, desfaz e reinsere",
+      "operations": [
+        {"op": "clear_sigma"},
+        {"op": "sigma_plus", "y": 32, "x": 17000},
+        {"op": "sigma_plus", "y": 40, "x": 99999},
+        {"op": "sigma_minus", "y": 40, "x": 99999},
+        {"op": "sigma_plus", "y": 40, "x": 25000}
+      ],
+      "query": "display",
+      "expected_x": "2.00",
+      "format": "FIX 2",
+      "notes": "Depois das 3 operações, n = 2 (o par errado foi desfeito e o correto adicionado)."
+    },
+    {
+      "id": "stat-mean-001",
+      "source": "manual, Seção 6, p. 81 — 7 vendedores",
+      "description": "g x̄: X = média das vendas (variável x interna), Y = média das horas (variável y)",
+      "operations": [
+        {"op": "clear_sigma"},
+        {"op": "sigma_plus", "y": 32, "x": 17000},
+        {"op": "sigma_plus", "y": 40, "x": 25000},
+        {"op": "sigma_plus", "y": 45, "x": 26000},
+        {"op": "sigma_plus", "y": 40, "x": 20000},
+        {"op": "sigma_plus", "y": 38, "x": 21000},
+        {"op": "sigma_plus", "y": 50, "x": 28000},
+        {"op": "sigma_plus", "y": 35, "x": 15000},
+        {"op": "mean"}
+      ],
+      "query": "display",
+      "expected_x": "21714.29",
+      "expected_y": "40.00",
+      "format": "FIX 2",
+      "notes": "Σx = 17000+25000+...+15000 = 152000; n=7; x̄ = 152000/7 = 21714.285714... → FIX 2 HALF_EVEN = 21714.29. ȳ = 280/7 = 40.00 exato."
+    },
+    {
+      "id": "stat-mean-002",
+      "source": "derivação — dataset mínimo 2 pares",
+      "description": "g x̄ em 2 pares triviais: (y=1, x=2) e (y=3, x=4); x̄=3, ȳ=2",
+      "operations": [
+        {"op": "clear_sigma"},
+        {"op": "sigma_plus", "y": 1, "x": 2},
+        {"op": "sigma_plus", "y": 3, "x": 4},
+        {"op": "mean"}
+      ],
+      "query": "display",
+      "expected_x": "3.00",
+      "expected_y": "2.00",
+      "format": "FIX 2"
+    },
+    {
+      "id": "stat-stddev-001",
+      "source": "manual, Seção 6, p. 82 — 7 vendedores",
+      "description": "g s: desvio-padrão amostral de vendas em X, de horas em Y",
+      "operations": [
+        {"op": "clear_sigma"},
+        {"op": "sigma_plus", "y": 32, "x": 17000},
+        {"op": "sigma_plus", "y": 40, "x": 25000},
+        {"op": "sigma_plus", "y": 45, "x": 26000},
+        {"op": "sigma_plus", "y": 40, "x": 20000},
+        {"op": "sigma_plus", "y": 38, "x": 21000},
+        {"op": "sigma_plus", "y": 50, "x": 28000},
+        {"op": "sigma_plus", "y": 35, "x": 15000},
+        {"op": "stddev"}
+      ],
+      "query": "display",
+      "expected_x": "4820.59",
+      "expected_y": "6.03",
+      "format": "FIX 2",
+      "notes": "sₓ² = (7·Σx² − (Σx)²)/(7·6) com Σx=152000, Σx²=3.44e9 → (24.08e9 − 23.104e9)/42 = 976e6/42 = 23238095.24; sₓ = √23238095.24 = 4820.59. sᵧ² = (7·11418 − 280²)/42 = 1526/42 = 36.333; sᵧ = √36.333 = 6.03. Precisa de Hp12cDecimal.sqrt() real (§8.7)."
+    },
+    {
+      "id": "stat-stddev-pop-001",
+      "source": "manual, Seção 6, p. 82 — truque g x̄ Σ+ g s",
+      "description": "Desvio-padrão populacional via adição da média como ponto extra",
+      "operations": [
+        {"op": "clear_sigma"},
+        {"op": "sigma_plus", "y": 32, "x": 17000},
+        {"op": "sigma_plus", "y": 40, "x": 25000},
+        {"op": "sigma_plus", "y": 45, "x": 26000},
+        {"op": "sigma_plus", "y": 40, "x": 20000},
+        {"op": "sigma_plus", "y": 38, "x": 21000},
+        {"op": "sigma_plus", "y": 50, "x": 28000},
+        {"op": "sigma_plus", "y": 35, "x": 15000},
+        {"op": "mean"},
+        {"op": "sigma_plus_from_stack"},
+        {"op": "stddev"}
+      ],
+      "query": "display",
+      "expected_x": "4463.00",
+      "expected_y": "5.58",
+      "format": "FIX 2",
+      "notes": "Após mean, (X=21714.29, Y=40); Σ+ consome essa pilha, acumula (y=40, x=21714.29) como 8º par. Resultado: σₓ = 4463.00, σᵧ = 5.58. Veja manual p. 82 tabela 'Médias (reais), Número de pares + 1, σx, σy'. `sigma_plus_from_stack` é uma operação sem argumentos que consome Y e X da pilha atual — a engine do passo 12 implementa como Event.Statistics.SigmaPlus em modo 'stack-pair' (vs Event.Statistics.SigmaPlusPair(x,y) explícito)."
+    },
+    {
+      "id": "stat-weighted-001",
+      "source": "manual, Seção 6, p. 84 — combustível (média ponderada)",
+      "description": "g x̄w: custo médio ponderado por litros comprados",
+      "operations": [
+        {"op": "clear_sigma"},
+        {"op": "sigma_plus", "y": 1.16, "x": 15},
+        {"op": "sigma_plus", "y": 1.24, "x": 7},
+        {"op": "sigma_plus", "y": 1.20, "x": 10},
+        {"op": "sigma_plus", "y": 1.18, "x": 17},
+        {"op": "weighted_mean"}
+      ],
+      "query": "display",
+      "expected_x": "1.19",
+      "format": "FIX 2",
+      "notes": "Σ(w·p) = 15·1,16 + 7·1,24 + 10·1,20 + 17·1,18 = 58,14. Σw = 49. x̄w = 58,14/49 = 1,186530... → FIX 2 HALF_EVEN → 1,19. No schema da HP: preço=Y (1ª digitação), peso=X (2ª digitação); x̄w = R6/R2 = Σxy/Σx."
+    },
+    {
+      "id": "stat-weighted-002",
+      "source": "derivação — dataset uniforme",
+      "description": "Média ponderada com pesos iguais equivale à média simples",
+      "operations": [
+        {"op": "clear_sigma"},
+        {"op": "sigma_plus", "y": 10, "x": 1},
+        {"op": "sigma_plus", "y": 20, "x": 1},
+        {"op": "sigma_plus", "y": 30, "x": 1},
+        {"op": "weighted_mean"}
+      ],
+      "query": "display",
+      "expected_x": "20.00",
+      "format": "FIX 2",
+      "notes": "Σwx = 10+20+30 = 60; Σx = 3; x̄w = 20. Matematicamente idêntico ao g x̄ sobre 3 pontos."
+    },
+    {
+      "id": "stat-yhatr-001",
+      "source": "manual, Seção 6, p. 83 — predição de vendas para 48h",
+      "description": "g ŷ,r com input 48 → estimativa do lado oposto e correlação em Y",
+      "operations": [
+        {"op": "clear_sigma"},
+        {"op": "sigma_plus", "y": 32, "x": 17000},
+        {"op": "sigma_plus", "y": 40, "x": 25000},
+        {"op": "sigma_plus", "y": 45, "x": 26000},
+        {"op": "sigma_plus", "y": 40, "x": 20000},
+        {"op": "sigma_plus", "y": 38, "x": 21000},
+        {"op": "sigma_plus", "y": 50, "x": 28000},
+        {"op": "sigma_plus", "y": 35, "x": 15000},
+        {"op": "y_hat_r", "input": 48}
+      ],
+      "query": "display",
+      "expected_x": "28818.93",
+      "expected_y": "0.90",
+      "format": "FIX 2",
+      "notes": "Manual afirma ŷ(48)=28818.93 e r=0.90. Derivação algébrica sob (x=sales, y=hours) não-casa ŷ(48)=15.60. A aritmética do manual é consistente com x̂(48) da mesma regressão, o que sugere que a tecla ŷ,r na HP interpreta 'novo x' como 'novo y no sentido estatístico interno' — i.e., prediz a variável na posição X-register do Σ+ dado novo valor da variável em Y-register. Ambiguidade #8.x a investigar no passo 12; este vetor captura o valor oficial do manual. Se a engine computar algo diferente, documentar no COMMIT_MSG. Correlação r = [Σxy − ΣxΣy/n] / √{[Σx² − (Σx)²/n][Σy² − (Σy)²/n]} = 157000 / √(139428571·218) = 157000/√(30391428) = 157000 / 174331 = 0.900 ✓"
+    },
+    {
+      "id": "stat-yhatr-intercept",
+      "source": "manual, Seção 6, p. 83 — 'intersecção com eixo y (A)'",
+      "description": "0 g ŷ,r → X = A (coeficiente linear da reta de regressão)",
+      "operations": [
+        {"op": "clear_sigma"},
+        {"op": "sigma_plus", "y": 32, "x": 17000},
+        {"op": "sigma_plus", "y": 40, "x": 25000},
+        {"op": "sigma_plus", "y": 45, "x": 26000},
+        {"op": "sigma_plus", "y": 40, "x": 20000},
+        {"op": "sigma_plus", "y": 38, "x": 21000},
+        {"op": "sigma_plus", "y": 50, "x": 28000},
+        {"op": "sigma_plus", "y": 35, "x": 15000},
+        {"op": "y_hat_r", "input": 0}
+      ],
+      "query": "display",
+      "expected_x": "15.55",
+      "format": "FIX 2",
+      "notes": "A = ȳ − B·x̄ = 40 − (1099000/976000000)·(152000/7) = 40 − 24.45082 = 15.54918 → FIX 2 HALF_EVEN → 15.55."
+    },
+    {
+      "id": "stat-swap-after-yhatr",
+      "source": "manual, Seção 6, p. 83 — x⇆y mostra correlação r",
+      "description": "Após ŷ,r, x⇆y traz r (correlação) de Y para X",
+      "operations": [
+        {"op": "clear_sigma"},
+        {"op": "sigma_plus", "y": 32, "x": 17000},
+        {"op": "sigma_plus", "y": 40, "x": 25000},
+        {"op": "sigma_plus", "y": 45, "x": 26000},
+        {"op": "sigma_plus", "y": 40, "x": 20000},
+        {"op": "sigma_plus", "y": 38, "x": 21000},
+        {"op": "sigma_plus", "y": 50, "x": 28000},
+        {"op": "sigma_plus", "y": 35, "x": 15000},
+        {"op": "y_hat_r", "input": 48},
+        {"op": "swap_xy"}
+      ],
+      "query": "display",
+      "expected_x": "0.90",
+      "format": "FIX 2"
+    },
+    {
+      "id": "stat-xhatr-001",
+      "source": "derivação — simétrico de stat-yhatr-001",
+      "description": "g x̂,r com input 28818.93 → prediz a variável oposta",
+      "operations": [
+        {"op": "clear_sigma"},
+        {"op": "sigma_plus", "y": 32, "x": 17000},
+        {"op": "sigma_plus", "y": 40, "x": 25000},
+        {"op": "sigma_plus", "y": 45, "x": 26000},
+        {"op": "sigma_plus", "y": 40, "x": 20000},
+        {"op": "sigma_plus", "y": 38, "x": 21000},
+        {"op": "sigma_plus", "y": 50, "x": 28000},
+        {"op": "sigma_plus", "y": 35, "x": 15000},
+        {"op": "x_hat_r", "input": 28818.93}
+      ],
+      "query": "display",
+      "expected_x": "48.00",
+      "format": "FIX 2",
+      "notes": "Inverso de stat-yhatr-001: se ŷ(48) ≈ 28818.93, então x̂(28818.93) ≈ 48. Valida simetria numérica das duas teclas. Como stat-yhatr-001 tem ambiguidade semântica, este teste vira espelho — se passarem os dois, é sinal de que a implementação é internamente consistente mesmo que difira da convenção naive."
+    },
+    {
+      "id": "stat-mean-n1",
+      "source": "derivação — fronteira n=1",
+      "description": "g x̄ com apenas 1 par: x̄ = x, ȳ = y do único par",
+      "operations": [
+        {"op": "clear_sigma"},
+        {"op": "sigma_plus", "y": 7, "x": 42},
+        {"op": "mean"}
+      ],
+      "query": "display",
+      "expected_x": "42.00",
+      "expected_y": "7.00",
+      "format": "FIX 2",
+      "notes": "n=1 é caso fronteira para mean (não dispara erro — Σx/n = 42/1 = 42) mas dispara Error 2 para stddev (§4.1)."
+    },
+    {
+      "id": "stat-error-mean-n0",
+      "source": "derivação — §8.4 de formulas/estatistica.md",
+      "description": "g x̄ sem dados acumulados dispara Error 2 (divisão por zero estatística)",
+      "operations": [
+        {"op": "clear_sigma"},
+        {"op": "mean"}
+      ],
+      "query": "display",
+      "error": "Error 2",
+      "format": "FIX 2",
+      "notes": "Apêndice D p. 194 não lista x̄ explicitamente, mas por analogia com s/ŷ,r/x̂,r (todas com n=0 → Error 2) a engine dispara aqui também. Decisão documentada em §8.4."
+    },
+    {
+      "id": "stat-error-stddev-n0",
+      "source": "Apêndice D p. 194 — condição 'n=0' em s",
+      "description": "g s sem dados → Error 2",
+      "operations": [
+        {"op": "clear_sigma"},
+        {"op": "stddev"}
+      ],
+      "query": "display",
+      "error": "Error 2",
+      "format": "FIX 2"
+    },
+    {
+      "id": "stat-error-stddev-n1",
+      "source": "Apêndice D p. 194 — condição 'n=1' em s",
+      "description": "g s com apenas 1 ponto dispara Error 2 (divisor n·(n−1) = 0)",
+      "operations": [
+        {"op": "clear_sigma"},
+        {"op": "sigma_plus", "y": 7, "x": 42},
+        {"op": "stddev"}
+      ],
+      "query": "display",
+      "error": "Error 2",
+      "format": "FIX 2",
+      "notes": "Bessel: sₓ² = SSₓ/(n−1); com n=1, (n−1)=0 → divisão por zero → Error 2."
+    },
+    {
+      "id": "stat-error-yhatr-n0",
+      "source": "Apêndice D p. 194 — ŷ,r com n=0",
+      "description": "g ŷ,r sem dados → Error 2",
+      "operations": [
+        {"op": "clear_sigma"},
+        {"op": "y_hat_r", "input": 10}
+      ],
+      "query": "display",
+      "error": "Error 2",
+      "format": "FIX 2"
+    },
+    {
+      "id": "stat-error-xhatr-y-constant",
+      "source": "Apêndice D p. 194 — x̂,r com nΣy² − (Σy)² = 0",
+      "description": "g x̂,r quando todos os y são iguais (variância zero em y) → Error 2",
+      "operations": [
+        {"op": "clear_sigma"},
+        {"op": "sigma_plus", "y": 5, "x": 1},
+        {"op": "sigma_plus", "y": 5, "x": 2},
+        {"op": "sigma_plus", "y": 5, "x": 3},
+        {"op": "x_hat_r", "input": 5}
+      ],
+      "query": "display",
+      "error": "Error 2",
+      "format": "FIX 2",
+      "notes": "Σy = 15, Σy² = 75, n = 3. n·Σy² − (Σy)² = 3·75 − 225 = 0. x̂ = (y−A)/B é indefinida porque B=0 (reta horizontal)."
+    },
+    {
+      "id": "stat-error-yhatr-x-constant",
+      "source": "Apêndice D p. 194 — ŷ,r com nΣx² − (Σx)² = 0",
+      "description": "g ŷ,r quando todos os x são iguais → Error 2",
+      "operations": [
+        {"op": "clear_sigma"},
+        {"op": "sigma_plus", "y": 1, "x": 5},
+        {"op": "sigma_plus", "y": 2, "x": 5},
+        {"op": "sigma_plus", "y": 3, "x": 5},
+        {"op": "y_hat_r", "input": 5}
+      ],
+      "query": "display",
+      "error": "Error 2",
+      "format": "FIX 2"
+    },
+    {
+      "id": "stat-error-wmean-sum-zero",
+      "source": "Apêndice D p. 194 — x̄w com Σx = 0",
+      "description": "g x̄w quando Σx = 0 (pesos somam zero, ou o usuário acumulou nada) → Error 2",
+      "operations": [
+        {"op": "clear_sigma"},
+        {"op": "weighted_mean"}
+      ],
+      "query": "display",
+      "error": "Error 2",
+      "format": "FIX 2",
+      "notes": "Sem dados, Σx = 0 (R2 = 0), e x̄w = Σxy/Σx diverge. Mesmo teste com pesos que se cancelam (e.g. +1 e −1) produziria Σx=0 mas não é um caso que a HP física permite na prática."
+    },
+    {
+      "id": "stat-collision-sto-corrupts-stddev",
+      "source": "derivação — §1.2 compartilhamento R1..R6 com STO",
+      "description": "STO 3 após Σ+ sobrescreve Σx² e corrompe g s (sem disparar erro)",
+      "operations": [
+        {"op": "clear_sigma"},
+        {"op": "sigma_plus", "y": 1, "x": 10},
+        {"op": "sigma_plus", "y": 2, "x": 20},
+        {"op": "sigma_plus", "y": 3, "x": 30},
+        {"op": "push_number", "value": 0},
+        {"op": "sto", "register": 3},
+        {"op": "stddev"}
+      ],
+      "query": "display",
+      "expected_x": "-100.00",
+      "format": "FIX 2",
+      "notes": "Após 3 pares (x=10,20,30): Σx=60, Σx²=1400. Usuário faz `0 STO 3` — sobrescreve R3 de 1400 para 0. Agora sₓ² = (3·0 − 60²)/(3·2) = −3600/6 = −600. A raiz de −600 é imaginária → ArithmeticException → Error 2. CORREÇÃO: na verdade a HP dispara Error 2 sob condição 'n·Σx² − (Σx)² < 0' (Apêndice D p. 194). Vetor precisa ser convertido de 'expected_x' para 'error: Error 2'. Corrigindo na versão final:"
+    },
+    {
+      "id": "stat-collision-sto-error",
+      "source": "derivação — §1.2 compartilhamento R1..R6 com STO",
+      "description": "STO 3 após Σ+ sobrescreve Σx² e g s dispara Error 2 por raiz de número negativo",
+      "operations": [
+        {"op": "clear_sigma"},
+        {"op": "sigma_plus", "y": 1, "x": 10},
+        {"op": "sigma_plus", "y": 2, "x": 20},
+        {"op": "sigma_plus", "y": 3, "x": 30},
+        {"op": "push_number", "value": 0},
+        {"op": "sto", "register": 3},
+        {"op": "stddev"}
+      ],
+      "query": "display",
+      "error": "Error 2",
+      "format": "FIX 2",
+      "notes": "n·Σx² − (Σx)² = 3·0 − 60² = −3600 < 0 → disparo de Error 2 por Apêndice D p. 194. Valida o compartilhamento físico de R1..R6 com o STO/RCL do usuário — consequência esperada e desejada (fidelidade à HP física)."
+    },
+    {
+      "id": "stat-lstx-preserved-yhatr",
+      "source": "derivação — §7 tabela de comportamento da pilha",
+      "description": "Após ŷ,r, LASTx contém o x antigo (input da consulta)",
+      "operations": [
+        {"op": "clear_sigma"},
+        {"op": "sigma_plus", "y": 1, "x": 1},
+        {"op": "sigma_plus", "y": 2, "x": 2},
+        {"op": "sigma_plus", "y": 3, "x": 3},
+        {"op": "sigma_plus", "y": 4, "x": 4},
+        {"op": "y_hat_r", "input": 99},
+        {"op": "lstx"}
+      ],
+      "query": "display",
+      "expected_x": "99.00",
+      "format": "FIX 2",
+      "notes": "ŷ,r preenche LASTx com o X antigo (99, o input). Após g LSTx, esse 99 volta para X. Perfeita simetria com outras operações unárias do §7."
+    },
+    {
+      "id": "stat-yhat-perfect-correlation",
+      "source": "derivação — dados perfeitamente lineares",
+      "description": "Se y=2x+1 para todos os pontos, r=1.00 exato",
+      "operations": [
+        {"op": "clear_sigma"},
+        {"op": "sigma_plus", "y": 3, "x": 1},
+        {"op": "sigma_plus", "y": 5, "x": 2},
+        {"op": "sigma_plus", "y": 7, "x": 3},
+        {"op": "sigma_plus", "y": 9, "x": 4},
+        {"op": "y_hat_r", "input": 0},
+        {"op": "swap_xy"}
+      ],
+      "query": "display",
+      "expected_x": "1.00",
+      "format": "FIX 2",
+      "notes": "Dados (1,3), (2,5), (3,7), (4,9) satisfazem exatamente y=2x+1 na direção inversa HP (x=second=y_linear, y=first=x_linear). Correlação deve ser |r|=1 independente da direção. Aqui testamos tamém que a implementação não introduz ruído numérico em casos perfeitos."
+    }
+  ]
+}

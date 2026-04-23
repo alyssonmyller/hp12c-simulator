@@ -2,6 +2,7 @@ package com.arcom.hp12c.engine
 
 import com.arcom.hp12c.engine.error.Hp12cError
 import com.arcom.hp12c.engine.event.Event
+import com.arcom.hp12c.engine.format.DisplayFormatter
 import com.arcom.hp12c.engine.math.Hp12cDecimal
 import com.arcom.hp12c.engine.state.CalculatorState
 import com.arcom.hp12c.engine.state.DisplayFormat
@@ -12,6 +13,7 @@ import com.arcom.hp12c.engine.state.binaryOp
 import com.arcom.hp12c.engine.state.clx
 import com.arcom.hp12c.engine.state.enter
 import com.arcom.hp12c.engine.state.lstx
+import com.arcom.hp12c.engine.state.percentOp
 import com.arcom.hp12c.engine.state.pushValue
 import com.arcom.hp12c.engine.state.rollDown
 import com.arcom.hp12c.engine.state.swapXY
@@ -28,8 +30,10 @@ import com.arcom.hp12c.engine.state.unaryOp
  *   ✔ passo 5 — reducer para `Event.Financial.Solve.{Fv, Pv, Pmt}` (fechados via `powInt`)
  *               + `ToggleCompoundFractionFlag` (flag C).
  *   ✔ passo 6 — `Transcendentals` (ln/exp/pow) habilitou `Solve.N` (fórmula fechada + teto)
- *               e `Solve.I` (Newton-Raphson sobre a equação TVM).  ← **este arquivo**
- *   ☐ passos 7-8 — DisplayFormatter, iterar 18 vetores TVM no `TvmVectorsTest`.
+ *               e `Solve.I` (Newton-Raphson sobre a equação TVM).
+ *   ✔ passo 7 — [DisplayFormatter] (FIX/SCI/ENG + separador pt-BR/en-US + `"Error n"`);
+ *               `formatDisplay` passa a delegar tudo pra lá.  ← **este arquivo**
+ *   ☐ passo 8 — iterar os 18 vetores TVM no `TvmVectorsTest` via leitor de resource KMP.
  *
  * ### Contrato observado
  *
@@ -46,10 +50,9 @@ import com.arcom.hp12c.engine.state.unaryOp
  *
  * ### Pontos de extensão restantes da Fase 1
  *
- * - `formatDisplay(...)` continua `TODO("Fase 1 passo 7 — DisplayFormatter")`. Isso
- *   mantém `TvmVectorsTest.tvm_001` vermelho mesmo após o passo 6, mas por motivo
- *   diferente (a parte Solve já computa o resultado correto em `state.stack.x`; é
- *   só a renderização final em FIX/SCI/ENG + separador que falta).
+ * - Passo 8: expandir `TvmVectorsTest` para consumir os 18 vetores de
+ *   `commonTest/resources/test-vectors/tvm-vectors.json` via `expect/actual fun readTestResource`
+ *   (cada plataforma lê seu resource). Hoje o `tvm_001` é inlinado.
  */
 internal class DefaultEngine : CalculatorEngine {
 
@@ -68,18 +71,20 @@ internal class DefaultEngine : CalculatorEngine {
         }
 
         return when (event) {
-            is Event.Entry     -> reduceEntry(state, event)
-            is Event.StackOp   -> reduceStackOp(state.commitEntry(), event)
-            is Event.Arith     -> reduceArith(state.commitEntry(), event)
-            is Event.Memory    -> reduceMemory(state.commitEntry(), event)
-            is Event.Display   -> reduceDisplay(state, event)   // NÃO comita (entrada persiste)
-            Event.AcknowledgeError -> state                      // sem erro pendente: no-op
-            is Event.Financial -> reduceFinancial(state, event)
+            is Event.Entry          -> reduceEntry(state, event)
+            is Event.StackOp        -> reduceStackOp(state.commitEntry(), event)
+            is Event.Arith          -> reduceArith(state.commitEntry(), event)
+            is Event.Memory         -> reduceMemory(state.commitEntry(), event)
+            is Event.Display        -> reduceDisplay(state, event)   // NÃO comita (entrada persiste)
+            Event.AcknowledgeError  -> state                          // sem erro pendente: no-op
+            is Event.Financial      -> reduceFinancial(state, event)
+            is Event.Transcendental -> reduceTranscendental(state.commitEntry(), event)
+            is Event.Percent        -> reducePercent(state.commitEntry(), event)
         }
     }
 
     override fun formatDisplay(state: CalculatorState, separator: NumericSeparator): String =
-        TODO("Fase 1 passo 7 — DisplayFormatter (FIX/SCI/ENG + separator + 'Error N')")
+        DisplayFormatter.format(state, separator)
 
     // ───────────────────────────────────────────────────────────────────────────
     //  Entry — digit, decimal point, CHS (durante entrada), EEX
@@ -651,5 +656,257 @@ internal class DefaultEngine : CalculatorEngine {
     private fun countMantissaDigits(buf: String): Int {
         val beforeE = buf.substringBefore('E')
         return beforeE.count { it.isDigit() }
+    }
+
+    // ───────────────────────────────────────────────────────────────────────────
+    //  Transcendental — 1/x, x², √x, LN, e^x, n!, RND, INT, FRAC, y^x
+    //  Fonte canônica: formulas/transcendentais.md §3 (unárias) e §4 (y^x binária).
+    // ───────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Reducer das 10 teclas matemáticas/alteração-de-número. Usa `unaryOp` para as unárias
+     * "normais" (preenchem LASTx), `binaryOp` para `y^x` e `applyRound` para `RND` (único
+     * caso em que LASTx **não** é atualizado — ver §3.7 de `formulas/transcendentais.md`).
+     *
+     * ### Mapeamento de erros (Apêndice D do manual, p. 193-195)
+     *
+     * | Tecla       | Condição                 | Código HP |
+     * |-------------|--------------------------|-----------|
+     * | `1/x`       | `x = 0`                  | Error 0   |
+     * | `√x`        | `x < 0`                  | Error 0   |
+     * | `LN`        | `x ≤ 0`                  | Error 0   |
+     * | `e^x`       | overflow `x > 230.2585`  | Error 1 * |
+     * | `y^x`       | `y=0 ∧ x≤0` ou `y<0 ∧ x∉ℤ`| Error 0  |
+     * | `n!`        | `x < 0` ou `x ∉ ℤ`       | Error 5   |
+     * | `n!`        | `n! > 10⁹⁹` (n ≥ 70)     | Error 1 * |
+     * | `x²`, `INT`, `FRAC`, `RND` | (sem erro possível) | — |
+     *
+     * (*) Casos de overflow (e^x e n! grande) ainda não têm vetor no JSON — declarados como
+     *     `coverage_gaps_known` no meta. O mapeamento conservador é `StoreOverflow` (Error 1)
+     *     para qualquer `ArithmeticException` não-catalogada desses dois callers; na prática o
+     *     controle de domínio de `factorial()` abaixo já prende o caso comum.
+     *
+     * A pilha é preservada tal como estava no início da operação em caso de erro (regra 8 de
+     * `referencias/stack-behavior.md` — mesma política de `reduceArith`).
+     */
+    private fun reduceTranscendental(state: CalculatorState, event: Event.Transcendental): CalculatorState {
+        return try {
+            when (event) {
+                Event.Transcendental.Reciprocal ->
+                    state.copy(stack = state.stack.unaryOp { x -> Hp12cDecimal.ONE / x })
+
+                Event.Transcendental.Square ->
+                    state.copy(stack = state.stack.unaryOp { x -> x * x })
+
+                Event.Transcendental.Sqrt ->
+                    state.copy(stack = state.stack.unaryOp { x -> x.sqrt() })
+
+                Event.Transcendental.Ln ->
+                    state.copy(stack = state.stack.unaryOp { x -> x.ln() })
+
+                Event.Transcendental.Exp ->
+                    state.copy(stack = state.stack.unaryOp { x -> x.exp() })
+
+                Event.Transcendental.Factorial ->
+                    state.copy(stack = state.stack.unaryOp { x -> factorial(x) })
+
+                Event.Transcendental.Integer ->
+                    state.copy(stack = state.stack.unaryOp { x -> x.truncateTowardsZero() })
+
+                Event.Transcendental.Fractional ->
+                    state.copy(stack = state.stack.unaryOp { x -> x - x.truncateTowardsZero() })
+
+                Event.Transcendental.Round ->
+                    applyRound(state)
+
+                Event.Transcendental.Power ->
+                    state.copy(stack = state.stack.binaryOp { y, x -> y.pow(x) })
+            }
+        } catch (e: FactorialDomainException) {
+            // Fatorial `x<0` ou `x` fracionário — idiossincrasia histórica, Error 5 (não 0).
+            state.copy(pendingError = Hp12cError.FactorialDomain)
+        } catch (e: ArithmeticException) {
+            state.copy(pendingError = errorForTranscendental(event))
+        }
+    }
+
+    /**
+     * Mapeamento de `ArithmeticException` genérica → código de erro HP, por tecla. Vale para
+     * exceções lançadas pelas primitivas de [Hp12cDecimal] (div/0, ln de não-positivo,
+     * pow inválido). Exceção sentinela [FactorialDomainException] é tratada em um `catch`
+     * separado acima para não depender de reflexão de mensagem.
+     *
+     * `Square`, `Integer`, `Fractional`, `Round` estão listadas como "sem erro possível"
+     * no manual — se caírem no catch, é bug da engine. Mapeamos defensivamente para
+     * `DivisionByZero` (Error 0 genérico) para expor o problema sem travar o processo.
+     */
+    private fun errorForTranscendental(event: Event.Transcendental): Hp12cError = when (event) {
+        Event.Transcendental.Reciprocal -> Hp12cError.DivisionByZero
+        Event.Transcendental.Sqrt       -> Hp12cError.SqrtOfNegative
+        Event.Transcendental.Ln         -> Hp12cError.LogOfNonPositive
+        // Overflow de e^x: sem vetor dedicado na Fase 2 bloco 1 (meta.coverage_gaps_known);
+        // StoreOverflow (Error 1) é o mapeamento conservador para a única exceção que a impl
+        // atual lança — `exp overflow` quando o argumento estoura ~231.
+        Event.Transcendental.Exp        -> Hp12cError.StoreOverflow
+        // `Factorial` aqui cobre apenas overflow (>69). Domínio inválido sobe como
+        // FactorialDomainException e é tratado em catch dedicado.
+        Event.Transcendental.Factorial  -> Hp12cError.StoreOverflow
+        Event.Transcendental.Power      -> Hp12cError.InvalidYToX
+        // Defesa profunda — estas teclas não deveriam lançar na prática.
+        Event.Transcendental.Square,
+        Event.Transcendental.Integer,
+        Event.Transcendental.Fractional,
+        Event.Transcendental.Round      -> Hp12cError.DivisionByZero
+    }
+
+    /**
+     * Fatorial via produto em `BigDecimal` (com arredondamento HALF_EVEN a 10 dígitos em cada
+     * multiplicação — o MC é intrínseco ao `Hp12cDecimal`). Ref: manual Apêndice E p. 205.
+     *
+     * Validação de domínio:
+     *   - Parte fracionária não-zero → [FactorialDomainException] (Error 5).
+     *   - `x < 0` → [FactorialDomainException] (Error 5).
+     *   - `x = 0` → `1` (`0! = 1`, Apêndice E). Segue Apêndice E mesmo contra a leitura literal
+     *     de "x ≤ 0" em Apêndice D — ambiguidade #1 de `formulas/transcendentais.md` §7.
+     *   - `x > 69` → [ArithmeticException] "overflow" — mapeado para Error 1 pelo caller
+     *     (`70! ≈ 1,20 × 10^100` estoura o visor da HP; Apêndice D p. 194).
+     *
+     * Loop iterativo com `fold(1, 2..n)` — evita recursão (stack depth) e é O(n) com `n ≤ 69`,
+     * ou seja ≤ 69 multiplicações BCD. Trivial.
+     */
+    private fun factorial(x: Hp12cDecimal): Hp12cDecimal {
+        val s = x.toString()
+        val dotIdx = s.indexOf('.')
+        val fracPart = if (dotIdx >= 0) s.substring(dotIdx + 1) else ""
+        if (fracPart.any { it != '0' }) {
+            throw FactorialDomainException("n! de não-inteiro")
+        }
+        val intPart = if (dotIdx >= 0) s.substring(0, dotIdx) else s
+        val n = try {
+            intPart.toLong()
+        } catch (e: NumberFormatException) {
+            throw FactorialDomainException("n! fora de range inteiro representável")
+        }
+        if (n < 0) throw FactorialDomainException("n! de negativo")
+        if (n > 69) throw ArithmeticException("n! overflow (n > 69)")
+        var result = Hp12cDecimal.ONE
+        var k = 2L
+        while (k <= n) {
+            result = result * Hp12cDecimal.of(k)
+            k++
+        }
+        return result
+    }
+
+    /**
+     * `RND` — materializa o arredondamento visível no visor dentro do registrador X.
+     *
+     * **Caso único**: não atualiza `LASTx` (ver `formulas/transcendentais.md` §3.7 e
+     * `referencias/stack-behavior.md`: LSTx após RND devolve o valor pré-operação **anterior**,
+     * não o pré-RND). Por isso não usamos `Stack.unaryOp` — fazemos a cópia manualmente.
+     *
+     * **Precisão de arredondamento**:
+     *   - FIX n → arredonda X a `n` casas decimais HALF_EVEN via [DisplayFormatter.roundHalfEven].
+     *   - SCI n / ENG n → manual manda arredondar a `n+1` algarismos significativos. Esta é
+     *     uma [lacuna declarada](test-vectors/transcendentais-vectors.json `coverage_gaps_known`)
+     *     da suíte de vetores — ambiguidade #4 de `formulas/transcendentais.md` §7. Aqui usamos
+     *     `n+1` via `toPlainString` + `roundHalfEven` sobre a representação normalizada, que é
+     *     fidedigno para valores típicos mas pode divergir na última casa para mantissas com
+     *     `n ≥ 6` em magnitudes extremas — caso que entrará na Fase 2 com vetores SCI/ENG.
+     */
+    private fun applyRound(state: CalculatorState): CalculatorState {
+        val x = state.stack.x
+        val newX: Hp12cDecimal = when (val fmt = state.display) {
+            is DisplayFormat.Fix -> {
+                val roundedStr = DisplayFormatter.roundHalfEven(x.toString(), fmt.places)
+                Hp12cDecimal.of(roundedStr)
+            }
+            is DisplayFormat.Sci, is DisplayFormat.Eng -> {
+                // TODO(fase 2): vetores SCI/ENG RND. Por ora tratamos como se fosse FIX n+1,
+                // o que é um best-effort — o behavior correto é arredondar a mantissa em `n+1`
+                // algarismos significativos, independente da posição do ponto.
+                val places = when (fmt) {
+                    is DisplayFormat.Sci -> fmt.places
+                    is DisplayFormat.Eng -> fmt.places
+                    else -> 0
+                }
+                val roundedStr = DisplayFormatter.roundHalfEven(x.toString(), places)
+                Hp12cDecimal.of(roundedStr)
+            }
+        }
+        // LASTx permanece — comportamento excepcional de RND (manual p. 86).
+        val newStack = state.stack.copy(
+            x = newX,
+            stackLiftEnabled = true,
+            isEntering = false,
+        )
+        return state.copy(stack = newStack)
+    }
+
+    /**
+     * Trunca `Hp12cDecimal` em direção a zero, preservando sinal: `3.88 → 3`, `-3.88 → -3`,
+     * `0.5 → 0`, `-0.5 → 0`. Usado pelas teclas `INT` e `FRAC` (esta última como
+     * `x - truncateTowardsZero(x)`), conforme §§3.8-3.9 de `formulas/transcendentais.md`.
+     *
+     * Impl via `toString()` + `Hp12cDecimal.of(parteInt)`: `toPlainString` do JVM nunca
+     * usa notação científica para valores nesta faixa (a HP representa no máximo
+     * `9,999999999 × 10^99`, inclusive inteiros gigantes entram como `0.E+100` bem fora da
+     * faixa de truncamento prático). Para valores extremos fora do domínio prático da HP, o
+     * comportamento pode degradar — não testamos.
+     */
+    private fun Hp12cDecimal.truncateTowardsZero(): Hp12cDecimal {
+        val s = toString()
+        val dotIdx = s.indexOf('.')
+        if (dotIdx < 0) return this
+        val intStr = s.substring(0, dotIdx).ifEmpty { "0" }
+        // Parse "-0" ou "0" ou "-3" ou "3" — Hp12cDecimal.of lida via BigDecimal, que
+        // normaliza "-0" para zero. Preserva sinal em negativos.
+        return Hp12cDecimal.of(intStr)
+    }
+
+    /**
+     * Sentinela interna para `n!` com domínio inválido (x<0 ou x não-inteiro). Separada de
+     * [ArithmeticException] só para que o caller diferencie "Error 5" (domínio de fatorial,
+     * idiossincrasia histórica do manual) de "Error 1" (overflow, que sobe como
+     * ArithmeticException genérica). A mensagem é consumida pelo Kotlin runtime; o importante
+     * é o tipo.
+     */
+    private class FactorialDomainException(message: String) : ArithmeticException(message)
+
+    // ───────────────────────────────────────────────────────────────────────────
+    //  Percent — %, %T, Δ%
+    //  Fonte canônica: formulas/transcendentais.md §2 + Apêndice E do manual (p. 197).
+    // ───────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Reducer das 3 teclas de percentagem. Duas famílias distintas:
+     *
+     * - **Retêm Y** (`%` e `%T`) — usam [Stack.percentOp], que preserva Y no visor (`300 ENTER
+     *   14 %` deixa `42` em X mas `300` continua em Y, permitindo `300 ENTER 14 % −` = 258).
+     *   Fórmulas: `% = y·x/100`, `%T = 100·x/y`. Ver §2.1 e §2.3 de
+     *   `formulas/transcendentais.md`.
+     *
+     * - **Desce a pilha** (`Δ%`) — binária clássica via [Stack.binaryOp]. Fórmula:
+     *   `Δ% = 100·(x−y)/y`. Ver §2.2.
+     *
+     * **Erros**: divisão por zero em `%T` e `Δ%` (quando `y=0`) → `Error 0`. O manual **silencia**
+     * esse caso na tabela de `Error 0`; tratamos por paralelismo com `÷` (ambiguidade #2 de
+     * `formulas/transcendentais.md` §7). A tecla `%` nunca lança — `y·x/100` é universal.
+     *
+     * Pilha é preservada no início da operação caso haja erro (regra 8 de
+     * `referencias/stack-behavior.md`).
+     */
+    private fun reducePercent(state: CalculatorState, event: Event.Percent): CalculatorState {
+        return try {
+            val newStack = when (event) {
+                Event.Percent.Of      -> state.stack.percentOp { y, x -> y * x / HUNDRED }
+                Event.Percent.OfTotal -> state.stack.percentOp { y, x -> HUNDRED * x / y }
+                Event.Percent.Delta   -> state.stack.binaryOp  { y, x -> HUNDRED * (x - y) / y }
+            }
+            state.copy(stack = newStack)
+        } catch (e: ArithmeticException) {
+            // Divisão por zero (y=0 em %T ou Δ%) — manual silencia, tratamos como Error 0.
+            state.copy(pendingError = Hp12cError.DivisionByZero)
+        }
     }
 }

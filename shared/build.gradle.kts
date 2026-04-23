@@ -73,3 +73,49 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 }
+
+// Configuração de logging para qualquer task de teste JVM-like neste módulo
+// (inclui :shared:jvmTest e :shared:testDebugUnitTest/:testReleaseUnitTest
+// do Android). Por padrão o Gradle só imprime "BUILD SUCCESSFUL" e esconde
+// a contagem de @Tests executados/passados/falhados — o que leva a pensar
+// que nada rodou quando a suíte inteira está verde. Aqui pedimos:
+//
+//   - events: quais transições de teste são logadas. "passed" + "failed"
+//     + "skipped" dá visão completa; "standardOut"/"standardError" ficam
+//     fora para não poluir com `println` eventual de debug.
+//   - showStandardStreams = false: idem.
+//   - exceptionFormat = FULL: stack trace completo em falhas (default é
+//     "short" que corta em 2-3 frames e esconde a causa real de falhas
+//     em helpers como `inputsToEvents`).
+//   - afterSuite: imprime o resumo agregado ("185 tests, 0 failures") no
+//     final, já que o default do Gradle não mostra totais.
+tasks.withType<Test>().configureEach {
+    testLogging {
+        events(
+            org.gradle.api.tasks.testing.logging.TestLogEvent.PASSED,
+            org.gradle.api.tasks.testing.logging.TestLogEvent.FAILED,
+            org.gradle.api.tasks.testing.logging.TestLogEvent.SKIPPED,
+        )
+        showStandardStreams = false
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
+    afterSuite(
+        KotlinClosure2<org.gradle.api.tasks.testing.TestDescriptor, org.gradle.api.tasks.testing.TestResult, Unit>(
+            { descriptor, result ->
+                // `parent == null` => é a raiz da suíte; só imprime uma vez.
+                if (descriptor.parent == null) {
+                    val total = result.testCount
+                    val passed = result.successfulTestCount
+                    val failed = result.failedTestCount
+                    val skipped = result.skippedTestCount
+                    val durationMs = result.endTime - result.startTime
+                    println(
+                        "\n=== ${this.name}: $total tests — " +
+                            "$passed passed, $failed failed, $skipped skipped " +
+                            "(${durationMs}ms) ==="
+                    )
+                }
+            }
+        )
+    )
+}

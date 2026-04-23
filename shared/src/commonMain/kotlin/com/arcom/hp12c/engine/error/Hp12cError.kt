@@ -19,7 +19,6 @@ sealed class Hp12cError(val code: Int, val reason: String) {
     object LogOfNonPositive      : Hp12cError(0, "log de valor não-positivo")
     object InvalidYToX           : Hp12cError(0, "y^x inválido (y<0 com x não-inteiro, ou y=0 com x≤0)")
     object SqrtOfNegative        : Hp12cError(0, "raiz quadrada de número negativo")
-    object InvalidFactorial      : Hp12cError(0, "n! inválido (x<0, não-inteiro, ou x>69)")
 
     // --- Error 1 — registradores de memória ---
     object RegisterNotFound      : Hp12cError(1, "registrador inexistente")
@@ -39,9 +38,20 @@ sealed class Hp12cError(val code: Int, val reason: String) {
     object InvalidGoto           : Hp12cError(4, "GTO/GSB para linha inexistente")
     object SubroutineOverflow    : Hp12cError(4, "subrotinas aninhadas além do limite")
 
-    // --- Error 5 — TVM ---
+    // --- Error 5 — TVM + fatorial (idiossincrasia histórica) ---
     object TvmNoConverge         : Hp12cError(5, "TVM não convergiu")
     object TvmInvalidSigns       : Hp12cError(5, "TVM: combinação de sinais inválida")
+
+    /**
+     * Domínio inválido em `n!`: `x < 0` ou `x` não-inteiro. Manual `bpia5314.pdf` p. 195
+     * (Apêndice D) lista fatorial sob **Erro 5** — não Erro 0 — por um motivo histórico:
+     * na HP12C original, `n!` compartilhava o código de firmware com as rotinas TVM.
+     * A fórmula `0! = 1` (Apêndice E p. 205) prevalece sobre a leitura literal de "x ≤ 0"
+     * no Apêndice D — ambiguidade #1 de `formulas/transcendentais.md` §7.
+     *
+     * Overflow (`70! > 10^99`) é `Error 1` (categoria de armazenamento), não este.
+     */
+    object FactorialDomain       : Hp12cError(5, "n! inválido (x<0 ou x não-inteiro)")
 
     // --- Error 6 — registradores financeiros ---
     object FinancialUninit       : Hp12cError(6, "registrador financeiro não-inicializado")

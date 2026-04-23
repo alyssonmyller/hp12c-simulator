@@ -96,6 +96,20 @@ actual class Hp12cDecimal internal constructor(internal val value: BigDecimal)
     actual fun exp(): Hp12cDecimal =
         Hp12cDecimal(expExtended(value).round(MC))
 
+    /**
+     * Raiz quadrada via [BigDecimal.sqrt] com [MC] direto — não passa por `exp(0.5·ln(x))`.
+     * Esse caminho direto é o canônico da HP12C para manter √2 em 10 dígitos (ver
+     * ambiguidade #6 de `formulas/transcendentais.md` §7).
+     *
+     * `BigDecimal.sqrt(MathContext)` aplica Newton-Raphson internamente com precisão
+     * controlada pelo MC — HALF_EVEN no último dígito significativo, igual ao resto da
+     * aritmética BCD da HP.
+     *
+     * Lança [ArithmeticException] diretamente via `BigDecimal.sqrt` quando `this < 0`;
+     * o reducer captura e mapeia para `Hp12cError.SqrtOfNegative` (Error 0).
+     */
+    actual fun sqrt(): Hp12cDecimal = Hp12cDecimal(value.sqrt(MC))
+
     actual fun isZero(): Boolean = value.signum() == 0
 
     actual override operator fun compareTo(other: Hp12cDecimal): Int =

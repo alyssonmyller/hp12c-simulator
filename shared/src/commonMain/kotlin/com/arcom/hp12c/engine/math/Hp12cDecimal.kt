@@ -50,6 +50,18 @@ expect class Hp12cDecimal : Comparable<Hp12cDecimal> {
      */
     fun exp(): Hp12cDecimal
 
+    /**
+     * Raiz quadrada. Impl canônica via `BigDecimal.sqrt(MathContext)` no JVM/Android (Java 9+)
+     * — caminho **direto** sem passar por `exp(0.5·ln(x))`, porque a redução genérica acumula
+     * 1-2 ULP na última casa e quebra vetores de 10 dígitos (`√2` em FIX 9 =
+     * `1,414213562`). Documentado em `formulas/transcendentais.md` §3.3 e como ambiguidade
+     * #6 do §7.
+     *
+     * Lança [ArithmeticException] se `this < 0` (reducer traduz para `Hp12cError.SqrtOfNegative`,
+     * o Error 0 da HP conforme Apêndice D p. 193).
+     */
+    fun sqrt(): Hp12cDecimal
+
     // --- Predicados / conversões ---
     fun isZero(): Boolean
 

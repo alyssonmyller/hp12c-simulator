@@ -40,6 +40,7 @@ A skill é organizada em 4 pastas. Cada pasta tem uma responsabilidade clara e u
 Fórmulas fechadas conforme aparecem no manual/apostila. **Uma fórmula aqui é a verdade matemática**; não a substitua por uma "equivalente algébrica" sem atualizar também a documentação de justificativa. Atualmente populado:
 
 - `tvm.md` — equação TVM da HP12C (juros compostos, com variantes de período fracionário) + isolamento algébrico de cada uma das 5 variáveis (n, i, PV, PMT, FV) em modo BEGIN e END.
+- `transcendentais.md` — funções matemáticas e de alteração de números (Seção 7 do manual: `√x`, `1/x`, `x²`, `LN`, `e^x`, `n!`, `y^x`, `INT`, `FRAC`, `RND`) e funções de percentagem (Seção 2: `%`, `Δ%`, `%T`), com domínio, condições de erro e comportamento da pilha para cada função. Inclui 6 ambiguidades documentadas (`0!`, `%`/`%T` com `y=0`, `y^0` com `y<0`, `RND` em SCI/ENG, `LN(1)`/`e^0`, precisão de `sqrt` vs `pow(0.5)`).
 
 Planejado para próximas sessões: `juros-simples.md`, `juros-compostos.md`, `npv-irr.md`, `amortizacao.md`, `depreciacao.md`, `estatistica.md`, `calendario.md`.
 
@@ -47,8 +48,9 @@ Planejado para próximas sessões: `juros-simples.md`, `juros-compostos.md`, `np
 Cada vetor é um problema resolvido com resposta oficialmente publicada num dos 3 PDFs. Toda implementação de engine tem que passar em 100% dos vetores correspondentes. Atualmente populado:
 
 - `tvm-vectors.json` — 18 vetores cobrindo FV, PV, n, i e PMT em modo END e BEGIN, retirados do manual e da apostila Moretti.
+- `transcendentais-vectors.json` — 34 vetores cobrindo as 13 teclas de função matemática/percentagem (`%`, `Δ%`, `%T`, `1/x`, `x²`, `√x`, `LN`, `e^x`, `n!`, `RND`, `INT`, `FRAC`, `y^x`). 27 vetores de caminho feliz + 7 vetores de erro (5× Error 0, 2× Error 5). Schema adaptado: `inputs` vira `stack` (pilha explícita) e o campo `solve_for` vira `operation` (a tecla pressionada). Vetores de erro usam o campo `error` (ex.: `"error": "Error 0"`) no lugar de `expected`.
 
-Schema de cada vetor (obrigatório):
+Schema de cada vetor **TVM** (obrigatório):
 
 ```json
 {
@@ -64,6 +66,22 @@ Schema de cada vetor (obrigatório):
   "notes": "opcional, para ambiguidades ou observações"
 }
 ```
+
+Schema de cada vetor **transcendental/percentagem**:
+
+```json
+{
+  "id": "trans-pct-001",
+  "source": "manual, Seção 2, p. 27",
+  "description": "14% de 300.",
+  "stack": ["300", "14"],
+  "operation": "percent",
+  "expected": "42.00",
+  "format": "FIX 2"
+}
+```
+
+No `stack`, o último elemento é o X (visor), os anteriores são Y/Z/T empilhados nessa ordem. Para vetores binários como `y^x` o array tem 2 entradas; para unários, 1. Vetores de erro substituem `expected` por `error: "Error N"`.
 
 Convenção de sinais segue rigorosamente a da HP12C: saída de caixa negativa, entrada positiva. Se o manual apresenta um exemplo com `5000 CHS PV`, o vetor registra `PV: -5000`. O campo `expected` é **string** para evitar ruído de ponto flutuante; a engine deve formatar sua saída conforme `format` e comparar como string.
 
