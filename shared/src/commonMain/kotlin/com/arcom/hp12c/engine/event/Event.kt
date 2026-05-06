@@ -150,8 +150,38 @@ sealed class Event {
         object Delta   : Percent()  // [Δ%]
     }
 
+    // --- 5.9 Estatística (Fase 2, bloco 2) ---
+    /**
+     * Sete teclas estatísticas da Seção 6 do manual (p. 79-84). Fonte canônica:
+     * `formulas/estatistica.md` e `test-vectors/estatistica-vectors.json`.
+     *
+     * **Convenção de pilha:** [SigmaPlus]/[SigmaMinus] são operações binárias — consomem Y e X.
+     * [Mean], [StdDev], [YHatR], [XHatR] são de "saída dupla": escrevem X **e** Y diretamente,
+     * sem mover Z/T. [WeightedMean] é unária (escreve só X). [ClearSigma] é limpeza focal.
+     *
+     * **Compartilhamento de registradores:** R1..R6 de `MemoryRegisters` são fisicamente os
+     * mesmos slots dos acumuladores estatísticos — decisão §1.2 de `formulas/estatistica.md`.
+     */
+    sealed class Statistics : Event() {
+        /** `Σ+` — acumula o par (Y=y, X=x) da pilha; empurra novo n em X. */
+        object SigmaPlus    : Statistics()
+        /** `g Σ-` — desacumula o par (Y=y, X=x) da pilha; empurra novo n em X. */
+        object SigmaMinus   : Statistics()
+        /** `g x̄` — média aritmética; X ← x̄, Y ← ȳ (escrita direta, não push). */
+        object Mean         : Statistics()
+        /** `g s` — desvio-padrão amostral; X ← sₓ, Y ← sᵧ. */
+        object StdDev       : Statistics()
+        /** `g x̄w` — média ponderada; X ← x̄w, Y preservado. */
+        object WeightedMean : Statistics()
+        /** `g ŷ,r` — estimativa de ŷ dado novo x (atual X); Y ← r (correlação). */
+        object YHatR        : Statistics()
+        /** `g x̂,r` — estimativa de x̂ dado novo y (atual X); Y ← r (correlação). */
+        object XHatR        : Statistics()
+        /** `f CLEAR Σ` — zera R1..R6 e a pilha inteira (Apêndice A p. 181). */
+        object ClearSigma   : Statistics()
+    }
+
     // --- Placeholders Fase 2 restantes (comentados propositalmente) ---
-    // sealed class Statistics     : Event() { object SigmaPlus, SigmaMinus, Mean, StdDev, LinearRegression }
     // sealed class Calendar       : Event() { object Date, Dys, DmyMode, MdyMode }
     // sealed class Cashflow       : Event() { object CashFlowZero, CashFlowJ, CountJ, Npv, Irr }
     // sealed class Depreciation   : Event() { object StraightLine, SumOfYears, DecliningBalance }

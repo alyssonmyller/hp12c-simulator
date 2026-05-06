@@ -8,9 +8,11 @@ import com.arcom.hp12c.engine.state.CalculatorState
 import com.arcom.hp12c.engine.state.DisplayFormat
 import com.arcom.hp12c.engine.state.NumericSeparator
 import com.arcom.hp12c.engine.state.TvmMode
+import com.arcom.hp12c.engine.state.RegisterId
 import com.arcom.hp12c.engine.state.acceptNewNumber
 import com.arcom.hp12c.engine.state.binaryOp
 import com.arcom.hp12c.engine.state.clx
+import com.arcom.hp12c.engine.state.dualOutputOp
 import com.arcom.hp12c.engine.state.enter
 import com.arcom.hp12c.engine.state.lstx
 import com.arcom.hp12c.engine.state.percentOp
@@ -80,6 +82,7 @@ internal class DefaultEngine : CalculatorEngine {
             is Event.Financial      -> reduceFinancial(state, event)
             is Event.Transcendental -> reduceTranscendental(state.commitEntry(), event)
             is Event.Percent        -> reducePercent(state.commitEntry(), event)
+            is Event.Statistics     -> reduceStatistics(state.commitEntry(), event)
         }
     }
 
@@ -189,7 +192,13 @@ internal class DefaultEngine : CalculatorEngine {
             Event.StackOp.Enter    -> state.copy(stack = state.stack.enter())
             Event.StackOp.ClearX   -> state.copy(stack = state.stack.clx())
             Event.StackOp.RollDown -> state.copy(stack = state.stack.rollDown())
-            Event.StackOp.SwapXY   -> state.copy(stack = state.stack.swapXY())
+            // §8.6 de formulas/estatistica.md: se ŷ,r/x̂,r marcou r inválido, o swap
+            // que tentaria trazer r ao visor dispara Error 2 em vez de realizar a troca.
+            Event.StackOp.SwapXY   -> if (state.statisticsRInvalid) {
+                state.copy(pendingError = Hp12cError.StatisticsCollinear, statisticsRInvalid = false)
+            } else {
+                state.copy(stack = state.stack.swapXY(), statisticsRInvalid = false)
+            }
             Event.StackOp.LastX    -> state.copy(stack = state.stack.lstx())
         }
 
@@ -872,6 +881,216 @@ internal class DefaultEngine : CalculatorEngine {
      * é o tipo.
      */
     private class FactorialDomainException(message: String) : ArithmeticException(message)
+
+    // ───────────────────────────────────────────────────────────────────────────
+    //  Statistics — Σ+, Σ-, g x̄, g s, g x̄w, g ŷ,r, g x̂,r, f CLEAR Σ
+    //  Fonte canônica: formulas/estatistica.md + test-vectors/estatistica-vectors.json
+    // ───────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Reducer das 8 teclas estatísticas. Lê/grava R1..R6 diretamente em `MemoryRegisters`
+     * (compartilhamento físico — §1.2 de `formulas/estatistica.md`).
+     *
+     * Política de erros (todos Error 2 — Apêndice D p. 194):
+     *
+     * | Tecla        | Condição                                         |
+     * |--------------|--------------------------------------------------|
+     * | Mean/StdDev/YHatR/XHatR | `n = 0`                             |
+     * | StdDev       | `n = 1`; ou discriminante < 0                   |
+     * | YHatR        | `nΣx² − (Σx)² = 0`                             |
+     * | XHatR        | `nΣy² − (Σy)² = 0`                             |
+     * | WeightedMean | `Σx = 0`                                        |
+     * | SwapXY após ŷ,r/x̂,r | `[nΣx²−(Σx)²]·[nΣy²−(Σy)²] ≤ 0`    |
+     *
+     * Pilha preservada em caso de erro (regra 8 de `stack-behavior.md`).
+     */
+    private fun reduceStatistics(state: CalculatorState, event: Event.Statistics): CalculatorState {
+        return when (event) {
+            Event.Statistics.ClearSigma -> {
+                // Apêndice A p. 181: zera R1..R6 E a pilha inteira. LASTx preservado.
+                val clearedMem = state.memory
+                    .store(RegisterId.R1, Hp12cDecimal.ZERO)
+                    .store(RegisterId.R2, Hp12cDecimal.ZERO)
+                    .store(RegisterId.R3, Hp12cDecimal.ZERO)
+                    .store(RegisterId.R4, Hp12cDecimal.ZERO)
+                    .store(RegisterId.R5, Hp12cDecimal.ZERO)
+                    .store(RegisterId.R6, Hp12cDecimal.ZERO)
+                val clearedStack = state.stack.copy(
+                    x = Hp12cDecimal.ZERO, y = Hp12cDecimal.ZERO,
+                    z = Hp12cDecimal.ZERO, t = Hp12cDecimal.ZERO,
+                    stackLiftEnabled = true, isEntering = false,
+                )
+                state.copy(stack = clearedStack, memory = clearedMem, statisticsRInvalid = false)
+            }
+
+            Event.Statistics.SigmaPlus -> {
+                // Consome (y=stack.y, x=stack.x), atualiza R1..R6, empurra novo n via binaryOp.
+                val x = state.stack.x
+                val y = state.stack.y
+                val n    = state.memory[RegisterId.R1] + Hp12cDecimal.ONE
+                val sumX = state.memory[RegisterId.R2] + x
+                val sumX2= state.memory[RegisterId.R3] + x * x
+                val sumY = state.memory[RegisterId.R4] + y
+                val sumY2= state.memory[RegisterId.R5] + y * y
+                val sumXY= state.memory[RegisterId.R6] + x * y
+                val newMem = state.memory
+                    .store(RegisterId.R1, n)
+                    .store(RegisterId.R2, sumX)
+                    .store(RegisterId.R3, sumX2)
+                    .store(RegisterId.R4, sumY)
+                    .store(RegisterId.R5, sumY2)
+                    .store(RegisterId.R6, sumXY)
+                // binaryOp: Z→Y, T sticky, lastX=x antigo (o x-variável acumulado).
+                val newStack = state.stack.binaryOp { _, _ -> n }
+                state.copy(stack = newStack, memory = newMem, statisticsRInvalid = false)
+            }
+
+            Event.Statistics.SigmaMinus -> {
+                val x = state.stack.x
+                val y = state.stack.y
+                val n    = state.memory[RegisterId.R1] - Hp12cDecimal.ONE
+                val sumX = state.memory[RegisterId.R2] - x
+                val sumX2= state.memory[RegisterId.R3] - x * x
+                val sumY = state.memory[RegisterId.R4] - y
+                val sumY2= state.memory[RegisterId.R5] - y * y
+                val sumXY= state.memory[RegisterId.R6] - x * y
+                val newMem = state.memory
+                    .store(RegisterId.R1, n)
+                    .store(RegisterId.R2, sumX)
+                    .store(RegisterId.R3, sumX2)
+                    .store(RegisterId.R4, sumY)
+                    .store(RegisterId.R5, sumY2)
+                    .store(RegisterId.R6, sumXY)
+                val newStack = state.stack.binaryOp { _, _ -> n }
+                state.copy(stack = newStack, memory = newMem, statisticsRInvalid = false)
+            }
+
+            Event.Statistics.Mean -> {
+                val n = state.memory[RegisterId.R1]
+                if (n.isZero()) return state.copy(pendingError = Hp12cError.StatisticsUnderflow)
+                val meanX = state.memory[RegisterId.R2] / n
+                val meanY = state.memory[RegisterId.R4] / n
+                val newStack = state.stack.dualOutputOp { _ -> Pair(meanX, meanY) }
+                state.copy(stack = newStack, statisticsRInvalid = false)
+            }
+
+            Event.Statistics.StdDev -> {
+                val n = state.memory[RegisterId.R1]
+                if (n.isZero()) return state.copy(pendingError = Hp12cError.StatisticsUnderflow)
+                val nMinusOne = n - Hp12cDecimal.ONE
+                if (nMinusOne.isZero()) return state.copy(pendingError = Hp12cError.StatisticsUnderflow)
+                val sumX  = state.memory[RegisterId.R2]
+                val sumX2 = state.memory[RegisterId.R3]
+                val sumY  = state.memory[RegisterId.R4]
+                val sumY2 = state.memory[RegisterId.R5]
+                // sₓ² = (n·Σx² − (Σx)²) / (n·(n−1))
+                val discX = n * sumX2 - sumX * sumX
+                val discY = n * sumY2 - sumY * sumY
+                if (discX.compareTo(Hp12cDecimal.ZERO) < 0 || discY.compareTo(Hp12cDecimal.ZERO) < 0)
+                    return state.copy(pendingError = Hp12cError.StatisticsUnderflow)
+                val denom = n * nMinusOne
+                val sx = (discX / denom).sqrt()
+                val sy = (discY / denom).sqrt()
+                val newStack = state.stack.dualOutputOp { _ -> Pair(sx, sy) }
+                state.copy(stack = newStack, statisticsRInvalid = false)
+            }
+
+            Event.Statistics.WeightedMean -> {
+                // x̄w = R6 / R2 = Σxy / Σx — §3.2 de formulas/estatistica.md
+                val sumX = state.memory[RegisterId.R2]
+                if (sumX.isZero()) return state.copy(pendingError = Hp12cError.StatisticsUnderflow)
+                val xw = state.memory[RegisterId.R6] / sumX
+                val xOld = state.stack.x
+                val newStack = state.stack.copy(
+                    x = xw, lastX = xOld,
+                    stackLiftEnabled = true, isEntering = false,
+                )
+                state.copy(stack = newStack, statisticsRInvalid = false)
+            }
+
+            Event.Statistics.YHatR -> {
+                // ŷ = A + B·x_new  onde B e A são da regressão y=A+Bx (x=R2, y=R4)
+                val n = state.memory[RegisterId.R1]
+                if (n.isZero()) return state.copy(pendingError = Hp12cError.StatisticsUnderflow)
+                val sumX  = state.memory[RegisterId.R2]
+                val sumX2 = state.memory[RegisterId.R3]
+                val discX = n * sumX2 - sumX * sumX
+                if (discX.isZero()) return state.copy(pendingError = Hp12cError.StatisticsCollinear)
+                val sumY  = state.memory[RegisterId.R4]
+                val sumY2 = state.memory[RegisterId.R5]
+                val sumXY = state.memory[RegisterId.R6]
+                val xNew = state.stack.x
+                val (yhat, r, rInvalid) = computeRegression(n, sumX, sumX2, sumY, sumY2, sumXY, xNew, isYHat = true)
+                val newStack = state.stack.dualOutputOp { _ -> Pair(yhat, r) }
+                state.copy(stack = newStack, statisticsRInvalid = rInvalid)
+            }
+
+            Event.Statistics.XHatR -> {
+                val n = state.memory[RegisterId.R1]
+                if (n.isZero()) return state.copy(pendingError = Hp12cError.StatisticsUnderflow)
+                val sumY  = state.memory[RegisterId.R4]
+                val sumY2 = state.memory[RegisterId.R5]
+                val discY = n * sumY2 - sumY * sumY
+                if (discY.isZero()) return state.copy(pendingError = Hp12cError.StatisticsCollinear)
+                val sumX  = state.memory[RegisterId.R2]
+                val sumX2 = state.memory[RegisterId.R3]
+                val sumXY = state.memory[RegisterId.R6]
+                val yNew = state.stack.x
+                val (xhat, r, rInvalid) = computeRegression(n, sumX, sumX2, sumY, sumY2, sumXY, yNew, isYHat = false)
+                val newStack = state.stack.dualOutputOp { _ -> Pair(xhat, r) }
+                state.copy(stack = newStack, statisticsRInvalid = rInvalid)
+            }
+        }
+    }
+
+    /**
+     * Calcula coeficientes da regressão linear e produz a estimativa pedida + correlação r.
+     *
+     * Fórmulas (Apêndice E p. 205):
+     * ```
+     * B = (nΣxy − ΣxΣy) / (nΣx² − (Σx)²)
+     * A = ȳ − B·x̄
+     * ŷ(x_new) = A + B·x_new          [isYHat=true]
+     * x̂(y_new) = (y_new − A) / B      [isYHat=false]
+     * r = (nΣxy − ΣxΣy) / √[(nΣx²−(Σx)²)·(nΣy²−(Σy)²)]
+     * ```
+     *
+     * Retorna `Triple(estimativa, r, rInvalid)` onde `rInvalid=true` significa que o
+     * denominador de `r` é ≤ 0 (§8.6 de `formulas/estatistica.md`) — nesse caso `r` é
+     * zero (placeholder) e o flag é propagado para `state.statisticsRInvalid`.
+     *
+     * Pré-condição: o caller já verificou que o discriminante relevante (discX para ŷ,r;
+     * discY para x̂,r) é não-zero — logo B é sempre calculável aqui.
+     */
+    private fun computeRegression(
+        n: Hp12cDecimal,
+        sumX: Hp12cDecimal, sumX2: Hp12cDecimal,
+        sumY: Hp12cDecimal, sumY2: Hp12cDecimal,
+        sumXY: Hp12cDecimal,
+        input: Hp12cDecimal,
+        isYHat: Boolean,
+    ): Triple<Hp12cDecimal, Hp12cDecimal, Boolean> {
+        val discX = n * sumX2 - sumX * sumX       // nΣx² − (Σx)²
+        val discY = n * sumY2 - sumY * sumY       // nΣy² − (Σy)²
+        val cross = n * sumXY - sumX * sumY       // nΣxy − ΣxΣy
+
+        val b = cross / discX                     // slope
+        val meanX = sumX / n
+        val meanY = sumY / n
+        val a = meanY - b * meanX                 // intercept
+
+        val estimate = if (isYHat) {
+            a + b * input                         // ŷ = A + Bx
+        } else {
+            (input - a) / b                       // x̂ = (y − A) / B
+        }
+
+        // r = cross / √(discX · discY)
+        val rDenomSq = discX * discY
+        val rInvalid = rDenomSq.compareTo(Hp12cDecimal.ZERO) <= 0
+        val r = if (rInvalid) Hp12cDecimal.ZERO else cross / rDenomSq.sqrt()
+        return Triple(estimate, r, rInvalid)
+    }
 
     // ───────────────────────────────────────────────────────────────────────────
     //  Percent — %, %T, Δ%

@@ -46,6 +46,15 @@ data class CalculatorState(
      */
     val pendingError: Hp12cError? = null,
 
+    /**
+     * Flag interna da ambiguidade §8.6 de `formulas/estatistica.md`: `true` quando
+     * `ŷ,r` ou `x̂,r` concluiu com sucesso mas o denominador de `r` é ≤ 0, tornando
+     * a correlação inválida. O próximo `x⇆y` (para trazer `r` ao visor) falha com
+     * Error 2 em vez de realizar o swap. Zerado por `Σ+`, `Σ-`, `f CLEAR Σ` e por
+     * qualquer outra operação que mude o estado estatístico.
+     */
+    val statisticsRInvalid: Boolean = false,
+
     /** Reservado para a Fase 3 (modo PRGM). Em Fase 0/1/2 permanece `Idle`. */
     val programState: ProgramState = ProgramState.Idle,
 ) {
