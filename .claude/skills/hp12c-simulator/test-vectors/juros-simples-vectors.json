@@ -1,0 +1,141 @@
+{
+  "schema_version": "1.0",
+  "description": "Vetores de teste para f INT (juros simples) — manual HP 12C Platinum Seção 5, p. 61-62. Formula: INT = PV × i × n / 36000 (base 360 dias). Apos f INT: X = INT, Y = PV (registrador financeiro).",
+  "vectors": [
+    {
+      "id": "jsimp-001",
+      "source": "manual, Seção 5, p. 61, Exemplo 1",
+      "description": "Juros simples de $10.000 por 90 dias a 8% a.a.",
+      "inputs": {
+        "n": 90,
+        "i": 8,
+        "PV": 10000
+      },
+      "query": "simple_interest",
+      "expected_x": "200.00",
+      "expected_y": "10000.00",
+      "format": "FIX 2",
+      "notes": "INT = 10000 × 8 × 90 / 36000 = 200.00. Y=PV permite montante via '+': 200+10000=10200."
+    },
+    {
+      "id": "jsimp-002",
+      "source": "moretti, Cap. 2, Juros Simples, Ex. derivado",
+      "description": "Juros simples de $5.000 por 60 dias a 10.5% a.a.",
+      "inputs": {
+        "n": 60,
+        "i": 10.5,
+        "PV": 5000
+      },
+      "query": "simple_interest",
+      "expected_x": "87.50",
+      "expected_y": "5000.00",
+      "format": "FIX 2",
+      "notes": "INT = 5000 × 10.5 × 60 / 36000 = 3150000 / 36000 = 87.50"
+    },
+    {
+      "id": "jsimp-003",
+      "source": "moretti, Cap. 2, Juros Simples, Ex. derivado",
+      "description": "Juros simples de $20.000 por 30 dias a 12% a.a.",
+      "inputs": {
+        "n": 30,
+        "i": 12,
+        "PV": 20000
+      },
+      "query": "simple_interest",
+      "expected_x": "200.00",
+      "expected_y": "20000.00",
+      "format": "FIX 2",
+      "notes": "INT = 20000 × 12 × 30 / 36000 = 7200000 / 36000 = 200.00"
+    },
+    {
+      "id": "jsimp-004",
+      "source": "moretti, Cap. 2, derivado",
+      "description": "Juros simples de $1.500 por 180 dias a 15% a.a.",
+      "inputs": {
+        "n": 180,
+        "i": 15,
+        "PV": 1500
+      },
+      "query": "simple_interest",
+      "expected_x": "112.50",
+      "expected_y": "1500.00",
+      "format": "FIX 2",
+      "notes": "INT = 1500 × 15 × 180 / 36000 = 4050000 / 36000 = 112.50"
+    },
+    {
+      "id": "jsimp-005",
+      "source": "manual, Seção 5, borda — PV negativo",
+      "description": "PV negativo (dívida): juros a pagar em $8.000 por 45 dias a 18% a.a.",
+      "inputs": {
+        "n": 45,
+        "i": 18,
+        "PV": -8000
+      },
+      "query": "simple_interest",
+      "expected_x": "-180.00",
+      "expected_y": "-8000.00",
+      "format": "FIX 2",
+      "notes": "INT = -8000 × 18 × 45 / 36000 = -6480000 / 36000 = -180.00. PV negativo → INT negativo (juro a pagar)."
+    },
+    {
+      "id": "jsimp-006",
+      "source": "borda — n=0",
+      "description": "n=0 dias: INT deve ser zero.",
+      "inputs": {
+        "n": 0,
+        "i": 12,
+        "PV": 5000
+      },
+      "query": "simple_interest",
+      "expected_x": "0.00",
+      "expected_y": "5000.00",
+      "format": "FIX 2",
+      "notes": "n=0 → INT = 5000 × 12 × 0 / 36000 = 0. Sem erro."
+    },
+    {
+      "id": "jsimp-007",
+      "source": "borda — i=0",
+      "description": "i=0%: INT deve ser zero.",
+      "inputs": {
+        "n": 90,
+        "i": 0,
+        "PV": 10000
+      },
+      "query": "simple_interest",
+      "expected_x": "0.00",
+      "expected_y": "10000.00",
+      "format": "FIX 2",
+      "notes": "i=0 → INT = 10000 × 0 × 90 / 36000 = 0. Sem erro."
+    },
+    {
+      "id": "jsimp-008",
+      "source": "moretti, derivado — FIX 4, resultado fracionário",
+      "description": "Resultado com casas decimais não-triviais: $7.500 por 73 dias a 11% a.a.",
+      "inputs": {
+        "n": 73,
+        "i": 11,
+        "PV": 7500
+      },
+      "query": "simple_interest",
+      "expected_x": "167.2917",
+      "expected_y": "7500.0000",
+      "format": "FIX 4",
+      "notes": "INT = 7500 × 11 × 73 / 36000 = 6022500 / 36000 = 167.2916666... → FIX 4: 5ª casa = 6 > 5 → arredonda para 167.2917"
+    },
+    {
+      "id": "jsimp-009",
+      "source": "moretti, derivado — FIX 2, taxa fracionária",
+      "description": "Taxa com duas casas decimais: $3.200 por 120 dias a 13.75% a.a.",
+      "inputs": {
+        "n": 120,
+        "i": 13.75,
+        "PV": 3200
+      },
+      "query": "simple_interest",
+      "expected_x": "146.67",
+      "expected_y": "3200.00",
+      "format": "FIX 2",
+      "notes": "INT = 3200 × 13.75 × 120 / 36000 = 5280000 / 36000 = 146.6666... → FIX 2 = 146.67 (3ª casa = 6 > 5, arredonda)"
+    }
+  ]
+}

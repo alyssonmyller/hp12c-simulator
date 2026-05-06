@@ -41,14 +41,18 @@ Fórmulas fechadas conforme aparecem no manual/apostila. **Uma fórmula aqui é 
 
 - `tvm.md` — equação TVM da HP12C (juros compostos, com variantes de período fracionário) + isolamento algébrico de cada uma das 5 variáveis (n, i, PV, PMT, FV) em modo BEGIN e END.
 - `transcendentais.md` — funções matemáticas e de alteração de números (Seção 7 do manual: `√x`, `1/x`, `x²`, `LN`, `e^x`, `n!`, `y^x`, `INT`, `FRAC`, `RND`) e funções de percentagem (Seção 2: `%`, `Δ%`, `%T`), com domínio, condições de erro e comportamento da pilha para cada função. Inclui 6 ambiguidades documentadas (`0!`, `%`/`%T` com `y=0`, `y^0` com `y<0`, `RND` em SCI/ENG, `LN(1)`/`e^0`, precisão de `sqrt` vs `pow(0.5)`).
+- `estatistica.md` — funções estatísticas (Seção 6 do manual + Apêndice E p. 204-205): `Σ+`, `Σ-`, `g x̄`, `g s`, `g ŷ,r`, `g x̂,r`, `g x̄w`, `f CLEAR Σ`. Cobre compartilhamento de R1..R6 com STO/RCL (§1.2), fórmulas de regressão linear (A, B, r), ambiguidade §8.x (ŷ,r vs x̂,r de manual p. 83), e a tecla especial de desvio-padrão populacional via trick `g x̄ Σ+ g s`.
+- `juros-simples.md` — tecla `f INT` (Seção 5, p. 61-62): fórmula `INT = PV × i × n / 36000`, comportamento de pilha (X ← INT, Y ← PV para facilitar montante via `+`), condições de erro e 3 ambiguidades documentadas (n fracionário, sinal de INT, Y após operação).
 
-Planejado para próximas sessões: `juros-simples.md`, `juros-compostos.md`, `npv-irr.md`, `amortizacao.md`, `depreciacao.md`, `estatistica.md`, `calendario.md`.
+Planejado para próximas sessões: `calendario.md`, `npv-irr.md`, `amortizacao.md`, `depreciacao.md`.
 
 ### `test-vectors/*.json` — rede de segurança empírica
 Cada vetor é um problema resolvido com resposta oficialmente publicada num dos 3 PDFs. Toda implementação de engine tem que passar em 100% dos vetores correspondentes. Atualmente populado:
 
 - `tvm-vectors.json` — 18 vetores cobrindo FV, PV, n, i e PMT em modo END e BEGIN, retirados do manual e da apostila Moretti.
 - `transcendentais-vectors.json` — 34 vetores cobrindo as 13 teclas de função matemática/percentagem (`%`, `Δ%`, `%T`, `1/x`, `x²`, `√x`, `LN`, `e^x`, `n!`, `RND`, `INT`, `FRAC`, `y^x`). 27 vetores de caminho feliz + 7 vetores de erro (5× Error 0, 2× Error 5). Schema adaptado: `inputs` vira `stack` (pilha explícita) e o campo `solve_for` vira `operation` (a tecla pressionada). Vetores de erro usam o campo `error` (ex.: `"error": "Error 0"`) no lugar de `expected`.
+- `estatistica-vectors.json` — 26 vetores cobrindo `Σ+`, `Σ-`, `g x̄`, `g s`, `g ŷ,r`, `g x̂,r`, `g x̄w`, `f CLEAR Σ`. Schema stateful: `operations` é lista de operações sequenciais aplicadas ao estado inicial; `expected_x`/`expected_y` ou `error` verificados ao final. Dois vetores ambíguos (`stat-yhatr-001`, `stat-xhatr-001`) excluídos dos `@Test` — documentam divergência entre manual p. 83 e fórmula padrão ŷ=A+Bx.
+- `juros-simples-vectors.json` — 9 vetores para `f INT` (juros simples, base 360 dias). Schema TVM-like: `inputs` com `n`, `i`, `PV`; `query: "simple_interest"`; `expected_x` (INT) e `expected_y` (PV retido). Cobre caminho feliz (5×), bordas n=0 e i=0, PV negativo, resultado fracionário FIX 4, taxa fracionária.
 
 Schema de cada vetor **TVM** (obrigatório):
 
