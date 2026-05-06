@@ -65,6 +65,7 @@ internal class DefaultEngine : CalculatorEngine {
      * do reducer financeiro, não da aritmética BCD em si.
      */
     private val HUNDRED: Hp12cDecimal = Hp12cDecimal.of(100)
+    private val THIRTY_SIX_THOUSAND: Hp12cDecimal = Hp12cDecimal.of(36000)
 
     override fun reduce(state: CalculatorState, event: Event): CalculatorState {
         // Erro pendente: qualquer tecla limpa e retorna. Réplica do aparelho físico.
@@ -283,7 +284,48 @@ internal class DefaultEngine : CalculatorEngine {
             Event.Financial.ToggleCompoundFractionFlag -> state.copy(
                 compoundFractionFlag = !state.compoundFractionFlag,
             )
+
+            Event.Financial.SimpleInterest -> reduceSimpleInterest(state.commitEntry())
         }
+
+    /**
+     * `f INT` — Juros Simples. Lê `n`, `i` (percentual) e `PV` dos registradores financeiros,
+     * calcula `INT = PV × i × n / 36000` (base 360 dias, manual Seção 5 p. 61) e escreve:
+     *
+     * - X ← INT
+     * - Y ← PV (do registrador financeiro, não Y₀ da pilha — para que `+` dê o montante)
+     * - Z, T inalterados
+     * - LASTx ← X antigo
+     *
+     * Registradores financeiros **não** são atualizados (diferente de TVM `Solve.*`).
+     * Overflow numérico → Error 1 via [Hp12cError.Overflow].
+     */
+    private fun reduceSimpleInterest(state: CalculatorState): CalculatorState {
+        val f = state.financial
+        val n  = f.n  ?: Hp12cDecimal.ZERO
+        val i  = f.i  ?: Hp12cDecimal.ZERO   // percentual, ex: 8 para 8%
+        val pv = f.pv ?: Hp12cDecimal.ZERO
+
+        val result = try {
+            computeSimpleInterest(n, i, pv)
+        } catch (e: ArithmeticException) {
+            return state.copy(pendingError = Hp12cError.StoreOverflow)   // Error 1 — overflow numérico
+        }
+
+        val newStack = state.stack.copy(
+            x = result,
+            y = pv,
+            lastX = state.stack.x,
+            stackLiftEnabled = true,
+            isEntering = false,
+        )
+        return state.copy(stack = newStack)
+    }
+
+    /** `INT = PV × i × n / 36000` — base 360 dias fixa, `i` em percentual. */
+    private fun computeSimpleInterest(
+        n: Hp12cDecimal, i: Hp12cDecimal, pv: Hp12cDecimal,
+    ): Hp12cDecimal = pv * i * n / THIRTY_SIX_THOUSAND
 
     /**
      * Armazena `stack.x` no registrador de TVM correspondente. **Não toca na pilha** (regra 7

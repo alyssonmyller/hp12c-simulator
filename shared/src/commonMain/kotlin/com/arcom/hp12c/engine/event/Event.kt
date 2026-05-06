@@ -78,6 +78,8 @@ sealed class Event {
         object ClearFinancial : Financial()
         /** STO EEX: alterna a flag C (juros simples vs compostos em período fracionário). */
         object ToggleCompoundFractionFlag : Financial()
+        /** f INT: calcula juros simples a partir dos registradores n, i e PV (manual, Seção 5, p. 61). */
+        object SimpleInterest : Financial()
     }
 
     // --- 5.6 Formato de display ---
