@@ -80,6 +80,13 @@ sealed class Event {
         object ToggleCompoundFractionFlag : Financial()
         /** f INT: calcula juros simples a partir dos registradores n, i e PV (manual, Seção 5, p. 61). */
         object SimpleInterest : Financial()
+        /**
+         * `f AMORT` — amortiza `n` períodos. Lê n, i, PV, PMT dos registradores financeiros.
+         * X ← totalInterest, Y ← totalPrincipal (estilo dualOutputOp, Z/T inalterados).
+         * Atualiza `financial.pv` com o saldo remanescente; `n` permanece inalterado.
+         * Error 6 se `INT(n) ≤ 0`. Ver `formulas/amortizacao.md`.
+         */
+        object Amortize : Financial()
     }
 
     // --- 5.6 Formato de display ---

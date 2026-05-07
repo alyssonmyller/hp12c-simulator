@@ -291,6 +291,8 @@ internal class DefaultEngine : CalculatorEngine {
             )
 
             Event.Financial.SimpleInterest -> reduceSimpleInterest(state.commitEntry())
+
+            Event.Financial.Amortize -> reduceAmortize(state.commitEntry())
         }
 
     /**
@@ -331,6 +333,65 @@ internal class DefaultEngine : CalculatorEngine {
     private fun computeSimpleInterest(
         n: Hp12cDecimal, i: Hp12cDecimal, pv: Hp12cDecimal,
     ): Hp12cDecimal = pv * i * n / THIRTY_SIX_THOUSAND
+
+    /**
+     * `f AMORT` — amortiza `n` períodos calculando juros e principal período a período.
+     *
+     * Algoritmo (fonte: `formulas/amortizacao.md` §3):
+     * ```
+     * para k = 1..INT(n):
+     *     interest_k  = -(pv_k × i_dec)
+     *     principal_k = PMT − interest_k
+     *     pv_k        = pv_k + principal_k
+     * ```
+     *
+     * **Pós-condições** (estilo `dualOutputOp` — igual a `g x̄` e `g s`):
+     * - X ← totalInterest
+     * - Y ← totalPrincipal
+     * - Z, T inalterados
+     * - LASTx ← X antigo
+     * - `financial.pv` ← saldo final (único registrador financeiro alterado)
+     * - `financial.n` permanece inalterado (para chamadas consecutivas)
+     *
+     * **Error 6** se `INT(n) ≤ 0` (manual, Apêndice D, p. 195).
+     *
+     * Invariante verificável: `totalInterest + totalPrincipal = INT(n) × PMT`.
+     */
+    private fun reduceAmortize(state: CalculatorState): CalculatorState {
+        val f    = state.financial
+        val nDec = f.n   ?: Hp12cDecimal.ZERO
+        val iPct = f.i   ?: Hp12cDecimal.ZERO
+        val pv0  = f.pv  ?: Hp12cDecimal.ZERO
+        val pmt  = f.pmt ?: Hp12cDecimal.ZERO
+
+        val nInt = nDec.toIntTruncated()
+        if (nInt <= 0) return state.copy(pendingError = Hp12cError.AmortizeInvalidN)
+
+        val iDec = iPct / HUNDRED
+
+        var pv             = pv0
+        var totalInterest  = Hp12cDecimal.ZERO
+        var totalPrincipal = Hp12cDecimal.ZERO
+
+        repeat(nInt) {
+            val interest  = -(pv * iDec)           // negativo para empréstimos padrão
+            val principal = pmt - interest          // parcela de principal do pagamento
+            totalInterest  += interest
+            totalPrincipal += principal
+            pv             += principal             // saldo reduz (principal < 0 em empréstimos)
+        }
+
+        // Pilha: estilo dualOutputOp — escreve X e Y diretamente, Z/T inalterados, LASTx = X₀.
+        val newStack = state.stack.copy(
+            x                = totalInterest,
+            y                = totalPrincipal,
+            lastX            = state.stack.x,
+            stackLiftEnabled = true,
+            isEntering       = false,
+        )
+        // Apenas PV é atualizado; n, i, PMT, FV permanecem inalterados.
+        return state.copy(stack = newStack, financial = f.copy(pv = pv))
+    }
 
     /**
      * Armazena `stack.x` no registrador de TVM correspondente. **Não toca na pilha** (regra 7
