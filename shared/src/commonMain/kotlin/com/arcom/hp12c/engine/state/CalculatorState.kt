@@ -23,6 +23,14 @@ data class CalculatorState(
      */
     val dateFormat: DateFormat = DateFormat.MDY,
 
+    /**
+     * Registradores de fluxo de caixa irregular da HP 12C.
+     * `cf0 == null` significa que `g CFo` ainda não foi pressionado — condição que dispara
+     * Error 7 ao chamar `f NPV` ou `f IRR`.
+     * Ver `formulas/npv-irr.md` §2 e `state/CashflowRegisters.kt`.
+     */
+    val cashflow: CashflowRegisters = CashflowRegisters(),
+
     /** Flag C da HP (STO EEX): `true` = juros compostos para período fracionário. Default = simples. */
     val compoundFractionFlag: Boolean = false,
 

@@ -7,6 +7,8 @@ import com.arcom.hp12c.engine.math.Hp12cDecimal
 import com.arcom.hp12c.engine.state.CalculatorState
 import com.arcom.hp12c.engine.state.DisplayFormat
 import com.arcom.hp12c.engine.state.NumericSeparator
+import com.arcom.hp12c.engine.state.CashflowEntry
+import com.arcom.hp12c.engine.state.CashflowRegisters
 import com.arcom.hp12c.engine.state.DateFormat
 import com.arcom.hp12c.engine.state.TvmMode
 import com.arcom.hp12c.engine.state.RegisterId
@@ -86,6 +88,7 @@ internal class DefaultEngine : CalculatorEngine {
             is Event.Percent        -> reducePercent(state.commitEntry(), event)
             is Event.Statistics     -> reduceStatistics(state.commitEntry(), event)
             is Event.Calendar       -> reduceCalendar(state, event)
+            is Event.Cashflow       -> reduceCashflow(state.commitEntry(), event)
         }
     }
 
@@ -1359,6 +1362,237 @@ internal class DefaultEngine : CalculatorEngine {
         val yStr  = date.year.toString().padStart(4, '0')
         return Hp12cDecimal.of("$intPart.$hiStr$yStr")
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Fluxos de caixa — g CFo, g CFj, g Nj, f NPV, f IRR
+    //  Fonte canônica: formulas/npv-irr.md + test-vectors/npv-irr-vectors.json
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Reducer das 5 teclas de fluxo de caixa. Comita o buffer antes de qualquer operação
+     * (o caller já chamou `commitEntry()`).
+     *
+     * Erros:
+     * - [Hp12cError.CashflowEmpty]  (Error 7) — `f NPV`/`f IRR` sem `g CFo`.
+     * - [Hp12cError.CashflowNjTooLarge] (Error 7) — `g Nj` com `X < 1` ou `X > 99`.
+     * - [Hp12cError.CashflowTooManyFlows] (Error 7) — `g CFj` quando `flows` já tem 79 entradas.
+     * - [Hp12cError.IrrNoSignChange] (Error 3) — `f IRR` sem mudança de sinal nos fluxos.
+     * - [Hp12cError.IrrNoConverge]   (Error 3) — `f IRR` não convergiu em 100 iterações.
+     *
+     * Pilha preservada em caso de erro (regra 8 de `stack-behavior.md`).
+     */
+    private fun reduceCashflow(state: CalculatorState, event: Event.Cashflow): CalculatorState =
+        when (event) {
+            Event.Cashflow.CashFlowZero -> reduceCFo(state)
+            Event.Cashflow.CashFlowJ    -> reduceCFj(state)
+            Event.Cashflow.CountJ       -> reduceNj(state)
+            Event.Cashflow.Npv          -> reduceNpv(state)
+            Event.Cashflow.Irr          -> reduceIrr(state)
+        }
+
+    /**
+     * `g CFo` — armazena X como CF0 e **limpa toda a lista** `flows`.
+     * Pilha inalterada (igual a STO n). `isEntering` já foi comitado pelo dispatcher.
+     * Ver `formulas/npv-irr.md` §2.1.
+     */
+    private fun reduceCFo(state: CalculatorState): CalculatorState =
+        state.copy(cashflow = CashflowRegisters(cf0 = state.stack.x))
+
+    /**
+     * `g CFj` — acrescenta `CashflowEntry(amount = X, count = 1)` ao final de `flows`.
+     * Error 7 se já existem 79 entradas (máximo de CF1..CF79 com CF0 = 80 total).
+     * Ver `formulas/npv-irr.md` §2.2.
+     */
+    private fun reduceCFj(state: CalculatorState): CalculatorState {
+        val cf = state.cashflow
+        if (cf.flows.size >= 79) return state.copy(pendingError = Hp12cError.CashflowTooManyFlows)
+        return state.copy(
+            cashflow = cf.copy(flows = cf.flows + CashflowEntry(amount = state.stack.x)),
+        )
+    }
+
+    /**
+     * `g Nj` — atualiza o `count` do último `CashflowEntry` em `flows`.
+     * Condições de Error 7:
+     *   - `flows` vazia (nenhum `g CFj` ainda) → [Hp12cError.CashflowEmpty]
+     *   - `X < 1` ou `X > 99` → [Hp12cError.CashflowNjTooLarge]
+     * Ver `formulas/npv-irr.md` §2.3.
+     */
+    private fun reduceNj(state: CalculatorState): CalculatorState {
+        val cf = state.cashflow
+        if (cf.flows.isEmpty())
+            return state.copy(pendingError = Hp12cError.CashflowEmpty)
+        val n = state.stack.x.toIntTruncated()
+        if (n < 1 || n > 99)
+            return state.copy(pendingError = Hp12cError.CashflowNjTooLarge)
+        val updated = cf.flows.toMutableList()
+        updated[updated.lastIndex] = updated.last().copy(count = n)
+        return state.copy(cashflow = cf.copy(flows = updated))
+    }
+
+    /**
+     * `f NPV` — calcula o Valor Presente Líquido usando `financial.i`.
+     * Error 7 se `cf0 == null` (nenhum `g CFo` registrado).
+     * Escreve resultado em X; LASTx ← X antigo; Y/Z/T inalterados.
+     * Ver `formulas/npv-irr.md` §3 para a fórmula iterativa.
+     */
+    private fun reduceNpv(state: CalculatorState): CalculatorState {
+        val cf = state.cashflow
+        val cf0 = cf.cf0 ?: return state.copy(pendingError = Hp12cError.CashflowEmpty)
+        val iPct = state.financial.i ?: Hp12cDecimal.ZERO
+        val iDec = iPct / HUNDRED
+        val result = try {
+            computeNpv(cf0, cf.flows, iDec)
+        } catch (e: ArithmeticException) {
+            return state.copy(pendingError = Hp12cError.IrrNoConverge)
+        }
+        val newStack = state.stack.copy(
+            x                = result,
+            lastX            = state.stack.x,
+            stackLiftEnabled = true,
+            isEntering       = false,
+        )
+        return state.copy(stack = newStack)
+    }
+
+    /**
+     * `f IRR` — calcula a Taxa Interna de Retorno via Newton-Raphson.
+     * Error 3 se os fluxos não têm mudança de sinal ([Hp12cError.IrrNoSignChange]).
+     * Error 3 se não convergir em 100 iterações ([Hp12cError.IrrNoConverge]).
+     * Error 7 se `cf0 == null` ([Hp12cError.CashflowEmpty]).
+     * Escreve IRR (percentual) em X; LASTx ← X antigo; atualiza `financial.i` com IRR.
+     * Ver `formulas/npv-irr.md` §4.
+     */
+    private fun reduceIrr(state: CalculatorState): CalculatorState {
+        val cf  = state.cashflow
+        val cf0 = cf.cf0 ?: return state.copy(pendingError = Hp12cError.CashflowEmpty)
+        if (!hasSignChange(cf0, cf.flows))
+            return state.copy(pendingError = Hp12cError.IrrNoSignChange)
+        val irrPct = try {
+            computeIrr(cf0, cf.flows)
+        } catch (e: IrrNoConvergeSignal) {
+            return state.copy(pendingError = Hp12cError.IrrNoConverge)
+        }
+        val newStack = state.stack.copy(
+            x                = irrPct,
+            lastX            = state.stack.x,
+            stackLiftEnabled = true,
+            isEntering       = false,
+        )
+        // Atualiza financial.i com IRR para que a chamada imediata de f NPV retorne 0.
+        return state.copy(stack = newStack, financial = state.financial.copy(i = irrPct))
+    }
+
+    // ── Cálculos NPV/IRR ───────────────────────────────────────────────────────
+
+    /**
+     * Fórmula NPV iterativa com fator de desconto `d = 1 / (1+i)`.
+     * Ramo degenerado `i = 0`: NPV = soma simples de todos os fluxos.
+     * Ver `formulas/npv-irr.md` §3.2.
+     */
+    private fun computeNpv(
+        cf0: Hp12cDecimal,
+        flows: List<CashflowEntry>,
+        iDec: Hp12cDecimal,
+    ): Hp12cDecimal {
+        var npv = cf0
+        if (iDec.isZero()) {
+            // Caso degenerado: i = 0 → NPV = soma simples dos fluxos
+            for ((amount, count) in flows) npv += amount * Hp12cDecimal.of(count)
+            return npv
+        }
+        val d  = Hp12cDecimal.ONE / (Hp12cDecimal.ONE + iDec)   // fator de desconto
+        var pv = d                                                // pv para o período 1
+        for ((amount, count) in flows) {
+            repeat(count) {
+                npv += amount * pv
+                pv  *= d
+            }
+        }
+        return npv
+    }
+
+    /**
+     * Derivada de NPV em relação a `r` (taxa em decimal):
+     * `f'(r) = -Σ_{t=1}^{T} t · CF(t) / (1+r)^(t+1)`
+     * Equivalente iterativo via `d = 1/(1+r)` e `pv = d^(t+1)`.
+     * Ver `formulas/npv-irr.md` §4.1.
+     */
+    private fun computeNpvDerivative(
+        flows: List<CashflowEntry>,
+        iDec: Hp12cDecimal,
+    ): Hp12cDecimal {
+        val d = Hp12cDecimal.ONE / (Hp12cDecimal.ONE + iDec)
+        var pv  = d * d   // d^2 para período t=1: t · CF(t) · d^(t+1) com t=1 → d^2
+        var t   = 1L
+        var sum = Hp12cDecimal.ZERO
+        for ((amount, count) in flows) {
+            repeat(count) {
+                sum += Hp12cDecimal.of(t) * amount * pv
+                pv  *= d
+                t   += 1L
+            }
+        }
+        return -sum
+    }
+
+    /**
+     * Newton-Raphson para IRR. Chute inicial `r₀ = 0.1` (10%).
+     * Se divergir (`r < −1` ou derivada nula), recomeça com `r₀ = 0.01`.
+     * Critério de convergência: `|r_{n+1} − r_n| < 10⁻⁸`.
+     * Máximo 100 iterações; se não convergir → lança [IrrNoConvergeSignal].
+     * Retorna IRR em **percentual** (ex.: `20.00` para 20%).
+     * Ver `formulas/npv-irr.md` §4.1 e §4.2.
+     */
+    private fun computeIrr(cf0: Hp12cDecimal, flows: List<CashflowEntry>): Hp12cDecimal {
+        val tolerance = Hp12cDecimal.of("0.00000001")  // 10⁻⁸
+        val minusOne  = -Hp12cDecimal.ONE
+
+        fun iterate(r0: Hp12cDecimal): Hp12cDecimal? {
+            var r = r0
+            repeat(100) {
+                val fVal  = computeNpv(cf0, flows, r)
+                val delta = fVal - Hp12cDecimal.ZERO
+                val absDelta = if (delta.compareTo(Hp12cDecimal.ZERO) < 0) -delta else delta
+                if (absDelta < tolerance) return r * HUNDRED
+
+                val df = computeNpvDerivative(flows, r)
+                if (df.isZero()) return null  // derivada nula — tenta outro chute
+                val rNew = r - fVal / df
+                if (rNew.compareTo(minusOne) <= 0) return null  // divergiu
+                val step = rNew - r
+                val absStep = if (step.compareTo(Hp12cDecimal.ZERO) < 0) -step else step
+                r = rNew
+                if (absStep < tolerance) return r * HUNDRED
+            }
+            return null
+        }
+
+        return iterate(Hp12cDecimal.of("0.1"))
+            ?: iterate(Hp12cDecimal.of("0.01"))
+            ?: throw IrrNoConvergeSignal()
+    }
+
+    /**
+     * Retorna `true` se os fluxos de caixa contêm pelo menos uma mudança de sinal.
+     * Um fluxo de valor zero é ignorado na detecção de sinal.
+     * Ver `formulas/npv-irr.md` §6.
+     */
+    private fun hasSignChange(cf0: Hp12cDecimal, flows: List<CashflowEntry>): Boolean {
+        val allValues = buildList {
+            add(cf0)
+            for ((amount, _) in flows) add(amount)
+        }
+        val hasPositive = allValues.any { it.compareTo(Hp12cDecimal.ZERO) > 0 }
+        val hasNegative = allValues.any { it.compareTo(Hp12cDecimal.ZERO) < 0 }
+        return hasPositive && hasNegative
+    }
+
+    /**
+     * Sentinela interna para IRR não convergiu. Separada de [ArithmeticException] para
+     * que o caller mapeie para [Hp12cError.IrrNoConverge] sem ambiguidade.
+     */
+    private class IrrNoConvergeSignal : ArithmeticException("IRR não convergiu")
 
     /**
      * Retorna `true` se [date] é uma data válida no calendário gregoriano suportado pela HP 12C.

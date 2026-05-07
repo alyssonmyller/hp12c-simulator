@@ -183,8 +183,26 @@ sealed class Event {
         object ClearSigma   : Statistics()
     }
 
+    // --- Fluxos de caixa irregular (Fase 2) ---
+    /**
+     * Cinco teclas de fluxo de caixa da Seção 8 do manual (p. 79-104). Fonte canônica:
+     * `formulas/npv-irr.md` e `test-vectors/npv-irr-vectors.json`.
+     *
+     * - [CashFlowZero] (`g CFo`) — armazena CF0 e limpa toda a lista de fluxos anteriores.
+     * - [CashFlowJ] (`g CFj`) — acrescenta próximo CF_j à lista (máx 79 entradas).
+     * - [CountJ] (`g Nj`) — define número de repetições do último CF_j (1-99).
+     * - [Npv] (`f NPV`) — calcula NPV com `i` do registrador financeiro.
+     * - [Irr] (`f IRR`) — calcula IRR; atualiza `financial.i` com o resultado.
+     */
+    sealed class Cashflow : Event() {
+        object CashFlowZero : Cashflow()   // g CFo
+        object CashFlowJ    : Cashflow()   // g CFj
+        object CountJ       : Cashflow()   // g Nj
+        object Npv          : Cashflow()   // f NPV
+        object Irr          : Cashflow()   // f IRR
+    }
+
     // --- Placeholders Fase 2 restantes (comentados propositalmente) ---
-    // sealed class Cashflow       : Event() { object CashFlowZero, CashFlowJ, CountJ, Npv, Irr }
     // sealed class Depreciation   : Event() { object StraightLine, SumOfYears, DecliningBalance }
     // sealed class AlgebraicToggle: Event() { object AlgMode, RpnMode }
 
