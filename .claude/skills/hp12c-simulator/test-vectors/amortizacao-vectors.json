@@ -1,0 +1,167 @@
+{
+  "schema_version": "1.0",
+  "meta": {
+    "description": "Vetores de teste para f AMORT — manual HP 12C Platinum, Seção 10, p. 68-76. Schema stateful: 'operations' é lista de operações aplicadas em ordem sobre o InitialState. Operações disponíveis: store_n, store_i, store_pv, store_pmt, store_fv, amort. Após amort: 'expected_x' = totalInterest, 'expected_y' = totalPrincipal, 'expected_pv' = saldo atualizado (todos opcionais exceto para vetores de caminho feliz). Vetores de erro usam 'error' em vez de 'expected_*'.",
+    "sources": [
+      "bpia5314.pdf — Seção 10, p. 68-76 — comportamento observável",
+      "bpia5314.pdf — Apêndice D, p. 195 — condições de Error 6"
+    ],
+    "conventions": {
+      "operations": [
+        "store_n   — grava 'value' no registrador financeiro n",
+        "store_i   — grava 'value' no registrador financeiro i (percentual)",
+        "store_pv  — grava 'value' no registrador financeiro PV",
+        "store_pmt — grava 'value' no registrador financeiro PMT",
+        "store_fv  — grava 'value' no registrador financeiro FV",
+        "amort     — f AMORT: amortiza n períodos; atualiza PV"
+      ],
+      "sign_convention": "Empréstimo padrão: PV > 0 (recebeu), PMT < 0 (paga), totalInterest < 0, totalPrincipal < 0.",
+      "number_format": "expected_* são strings no formato HP (sem separador de milhar). Comparação via DisplayFormatter(PERIOD_COMMA) + strip de vírgulas, igual ao pipeline dos demais VectorsTest.",
+      "invariant": "totalInterest + totalPrincipal = n × PMT (exato em BCD 10 dígitos)"
+    }
+  },
+  "vectors": [
+
+    {
+      "id": "amort-001",
+      "source": "derivado — amortização de 1 período, i=1%",
+      "description": "PV=1000, i=1%, PMT=-110, n=1 → juros=-10.00, principal=-100.00, PV_novo=900.00",
+      "operations": [
+        {"op": "store_n",   "value": 1},
+        {"op": "store_i",   "value": 1},
+        {"op": "store_pv",  "value": 1000},
+        {"op": "store_pmt", "value": -110},
+        {"op": "amort"}
+      ],
+      "expected_x":  "-10.00",
+      "expected_y":  "-100.00",
+      "expected_pv": "900.00",
+      "format": "FIX 2",
+      "notes": "Período 1: int=-1000×0.01=-10, prin=-110-(-10)=-100, PV=900. X+Y=-110=1×PMT ✓"
+    },
+
+    {
+      "id": "amort-002",
+      "source": "derivado — amortização de 2 períodos, i=1%",
+      "description": "PV=1000, i=1%, PMT=-110, n=2 → juros=-19.00, principal=-201.00, PV_novo=799.00",
+      "operations": [
+        {"op": "store_n",   "value": 2},
+        {"op": "store_i",   "value": 1},
+        {"op": "store_pv",  "value": 1000},
+        {"op": "store_pmt", "value": -110},
+        {"op": "amort"}
+      ],
+      "expected_x":  "-19.00",
+      "expected_y":  "-201.00",
+      "expected_pv": "799.00",
+      "format": "FIX 2",
+      "notes": "P1: int=-10, prin=-100, PV=900. P2: int=-9, prin=-101, PV=799. X+Y=-220=2×(-110) ✓"
+    },
+
+    {
+      "id": "amort-003",
+      "source": "derivado — amortização de 3 períodos, i=1% (verifica acumulação com BigDecimal 10 dígitos)",
+      "description": "PV=1000, i=1%, PMT=-110, n=3 → juros=-26.99, principal=-303.01, PV_novo=696.99",
+      "operations": [
+        {"op": "store_n",   "value": 3},
+        {"op": "store_i",   "value": 1},
+        {"op": "store_pv",  "value": 1000},
+        {"op": "store_pmt", "value": -110},
+        {"op": "amort"}
+      ],
+      "expected_x":  "-26.99",
+      "expected_y":  "-303.01",
+      "expected_pv": "696.99",
+      "format": "FIX 2",
+      "notes": "P3: int=-799×0.01=-7.99, prin=-102.01, PV=696.99. X+Y=-330=3×(-110) ✓. Todos os valores exatos em base-10."
+    },
+
+    {
+      "id": "amort-004",
+      "source": "derivado — ramo degenerado i=0 (juros zero, só principal)",
+      "description": "PV=500, i=0%, PMT=-100, n=2 → juros=0.00, principal=-200.00, PV_novo=300.00",
+      "operations": [
+        {"op": "store_n",   "value": 2},
+        {"op": "store_i",   "value": 0},
+        {"op": "store_pv",  "value": 500},
+        {"op": "store_pmt", "value": -100},
+        {"op": "amort"}
+      ],
+      "expected_x":  "0.00",
+      "expected_y":  "-200.00",
+      "expected_pv": "300.00",
+      "format": "FIX 2",
+      "notes": "Com i=0: interest_k=0, principal_k=PMT=-100. totalInterest=0, totalPrincipal=-200, PV=500-200=300."
+    },
+
+    {
+      "id": "amort-005",
+      "source": "derivado — i=10% por período (juros dominante)",
+      "description": "PV=1000, i=10%, PMT=-110, n=1 → juros=-100.00, principal=-10.00, PV_novo=990.00",
+      "operations": [
+        {"op": "store_n",   "value": 1},
+        {"op": "store_i",   "value": 10},
+        {"op": "store_pv",  "value": 1000},
+        {"op": "store_pmt", "value": -110},
+        {"op": "amort"}
+      ],
+      "expected_x":  "-100.00",
+      "expected_y":  "-10.00",
+      "expected_pv": "990.00",
+      "format": "FIX 2",
+      "notes": "P1: int=-1000×0.10=-100, prin=-110-(-100)=-10, PV=990. Quase todo o pagamento é juro."
+    },
+
+    {
+      "id": "amort-006",
+      "source": "derivado — amortização sequencial: primeira chamada de duas consecutivas",
+      "description": "PV=1000, i=1%, PMT=-110, n=2 (primeira chamada) → PV fica 799.00 para próxima chamada",
+      "operations": [
+        {"op": "store_n",   "value": 2},
+        {"op": "store_i",   "value": 1},
+        {"op": "store_pv",  "value": 1000},
+        {"op": "store_pmt", "value": -110},
+        {"op": "amort"},
+        {"op": "amort"}
+      ],
+      "expected_x":  "-14.96",
+      "expected_y":  "-205.04",
+      "expected_pv": "593.96",
+      "format": "FIX 2",
+      "notes": "Segunda chamada parte de PV=799.00 (atualizado pela 1ª chamada). P3: int=-799.00×0.01=-7.9900, prin=-102.0100, PV=696.9900. P4: int=-696.9900×0.01=-6.9699, prin=-103.0301, PV=593.9599. Totais internos: X=-14.9599, Y=-205.0401. Em FIX 2 HALF_EVEN: X=-14.96, Y=-205.04, PV=593.96. Verificação exata: -14.9599+(-205.0401)=-220.0000=2×(-110) ✓."
+    },
+
+    {
+      "id": "amort-error-001",
+      "source": "manual, Apêndice D, p. 195 — Error 6",
+      "description": "f AMORT com n=0 → Error 6",
+      "operations": [
+        {"op": "store_n",   "value": 0},
+        {"op": "store_i",   "value": 1},
+        {"op": "store_pv",  "value": 1000},
+        {"op": "store_pmt", "value": -110},
+        {"op": "amort"}
+      ],
+      "error": "Error 6",
+      "format": "FIX 2",
+      "notes": "INT(0) ≤ 0 → Error 6 antes de qualquer cálculo."
+    },
+
+    {
+      "id": "amort-error-002",
+      "source": "manual, Apêndice D, p. 195 — Error 6",
+      "description": "f AMORT com n=-1 → Error 6",
+      "operations": [
+        {"op": "store_n",   "value": -1},
+        {"op": "store_i",   "value": 1},
+        {"op": "store_pv",  "value": 1000},
+        {"op": "store_pmt", "value": -110},
+        {"op": "amort"}
+      ],
+      "error": "Error 6",
+      "format": "FIX 2",
+      "notes": "INT(-1) = -1 ≤ 0 → Error 6."
+    }
+
+  ]
+}
