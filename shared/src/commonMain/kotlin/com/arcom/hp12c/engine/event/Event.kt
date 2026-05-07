@@ -184,10 +184,24 @@ sealed class Event {
     }
 
     // --- Placeholders Fase 2 restantes (comentados propositalmente) ---
-    // sealed class Calendar       : Event() { object Date, Dys, DmyMode, MdyMode }
     // sealed class Cashflow       : Event() { object CashFlowZero, CashFlowJ, CountJ, Npv, Irr }
     // sealed class Depreciation   : Event() { object StraightLine, SumOfYears, DecliningBalance }
     // sealed class AlgebraicToggle: Event() { object AlgMode, RpnMode }
+
+    /**
+     * Funções de calendário — Seção 9 do manual, p. 106-113.
+     * Ver `formulas/calendario.md` para o algoritmo JDN, codificação de datas e Error 8.
+     */
+    sealed class Calendar : Event() {
+        /** `f DATE` — calcula a data resultante após N dias (X=nDays, Y=startDate). */
+        object Date   : Calendar()
+        /** `f DYS` — calcula o número de dias entre duas datas (X=date2, Y=date1). */
+        object Dys    : Calendar()
+        /** `g D.MY` — ativa modo D.MY (formato europeu `DD.MMYYYY`). */
+        object SetDmy : Calendar()
+        /** `g M.DY` — ativa modo M.DY (formato norte-americano `MM.DDYYYY`). Padrão de fábrica. */
+        object SetMdy : Calendar()
+    }
     //
     // --- Placeholders Fase 3 (programação) ---
     // sealed class Program        : Event() { object PrgmToggle, Goto, Gosub, Return, RunStop, SingleStep, BackStep }

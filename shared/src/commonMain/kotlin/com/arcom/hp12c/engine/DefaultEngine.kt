@@ -7,6 +7,7 @@ import com.arcom.hp12c.engine.math.Hp12cDecimal
 import com.arcom.hp12c.engine.state.CalculatorState
 import com.arcom.hp12c.engine.state.DisplayFormat
 import com.arcom.hp12c.engine.state.NumericSeparator
+import com.arcom.hp12c.engine.state.DateFormat
 import com.arcom.hp12c.engine.state.TvmMode
 import com.arcom.hp12c.engine.state.RegisterId
 import com.arcom.hp12c.engine.state.acceptNewNumber
@@ -84,6 +85,7 @@ internal class DefaultEngine : CalculatorEngine {
             is Event.Transcendental -> reduceTranscendental(state.commitEntry(), event)
             is Event.Percent        -> reducePercent(state.commitEntry(), event)
             is Event.Statistics     -> reduceStatistics(state.commitEntry(), event)
+            is Event.Calendar       -> reduceCalendar(state, event)
         }
     }
 
@@ -1169,5 +1171,210 @@ internal class DefaultEngine : CalculatorEngine {
             // Divisão por zero (y=0 em %T ou Δ%) — manual silencia, tratamos como Error 0.
             state.copy(pendingError = Hp12cError.DivisionByZero)
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Calendário — DATE, DYS, D.MY / M.DY  (manual Seção 9, p. 106-113)
+    //  Ver `formulas/calendario.md` para o algoritmo JDN e a codificação de datas.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /** Tripla (dia, mês, ano) descodificada de um valor HP 12C. */
+    private data class HpDate(val day: Int, val month: Int, val year: Int)
+
+    /**
+     * JDN do primeiro dia do calendário gregoriano: 15 de outubro de 1582.
+     * Valor canônico bem-conhecido: JDN = 2 299 161.
+     */
+    private val GREGORIAN_CUTOFF_JDN: Long = 2_299_161L
+
+    private fun reduceCalendar(state: CalculatorState, event: Event.Calendar): CalculatorState =
+        when (event) {
+            Event.Calendar.Date   -> reduceDate(state.commitEntry())
+            Event.Calendar.Dys    -> reduceDys(state.commitEntry())
+            // SetDmy/SetMdy são puramente cosméticos: não comitam o buffer, não tocam na pilha.
+            Event.Calendar.SetDmy -> state.copy(dateFormat = DateFormat.DMY)
+            Event.Calendar.SetMdy -> state.copy(dateFormat = DateFormat.MDY)
+        }
+
+    /**
+     * `f DATE` — calcula a data resultante após `n` dias a partir de uma data base.
+     *
+     * Entrada da pilha: X = n (nº de dias, pode ser negativo), Y = data base codificada em HP.
+     * Saída:  X = data resultante (mesma codificação M.DY ou D.MY do estado atual),
+     *         Y = código do dia-da-semana (1=Seg … 7=Dom),
+     *         Z e T inalterados, LASTx = n antigo.
+     *
+     * Error 8 se a data base for inválida ou se a data resultante cair fora do intervalo
+     * suportado. Ver `formulas/calendario.md`, Seção 2 e Seção 5.
+     */
+    private fun reduceDate(state: CalculatorState): CalculatorState {
+        val isMDY = state.dateFormat == DateFormat.MDY
+        val nDays = state.stack.x.toIntTruncated().toLong()
+        val startHp = state.stack.y
+
+        val hpDate = decodeHpDate(startHp, isMDY)
+            ?: return state.copy(pendingError = Hp12cError.InvalidDate)
+        if (!validateHpDate(hpDate))
+            return state.copy(pendingError = Hp12cError.InvalidDate)
+
+        val startJDN   = gregorianToJDN(hpDate.day, hpDate.month, hpDate.year)
+        val resultJDN  = startJDN + nDays
+        val resultGreg = jdnToGregorian(resultJDN)
+
+        if (!validateHpDate(resultGreg))
+            return state.copy(pendingError = Hp12cError.DateOutOfRange)
+
+        val resultEncoded = encodeHpDate(resultGreg, isMDY)
+        val dow = Hp12cDecimal.of(dayOfWeekHP(resultJDN))
+
+        val newStack = state.stack.copy(
+            x               = resultEncoded,
+            y               = dow,
+            lastX           = state.stack.x,
+            stackLiftEnabled = true,
+            isEntering      = false,
+        )
+        return state.copy(stack = newStack)
+    }
+
+    /**
+     * `f DYS` — calcula o número de dias entre duas datas.
+     *
+     * Entrada da pilha: X = date2 (posterior), Y = date1 (anterior).
+     * Saída:  X = número de dias (inteiro; negativo se date2 < date1),
+     *         Y = date2 (o X antigo), Z e T inalterados, LASTx = date2 antigo.
+     *
+     * Error 8 se qualquer data for inválida. Ver `formulas/calendario.md`, Seção 3.
+     */
+    private fun reduceDys(state: CalculatorState): CalculatorState {
+        val isMDY  = state.dateFormat == DateFormat.MDY
+        val date2Hp = state.stack.x
+        val date1Hp = state.stack.y
+
+        val date2 = decodeHpDate(date2Hp, isMDY) ?: return state.copy(pendingError = Hp12cError.InvalidDate)
+        if (!validateHpDate(date2)) return state.copy(pendingError = Hp12cError.InvalidDate)
+
+        val date1 = decodeHpDate(date1Hp, isMDY) ?: return state.copy(pendingError = Hp12cError.InvalidDate)
+        if (!validateHpDate(date1)) return state.copy(pendingError = Hp12cError.InvalidDate)
+
+        val jdn2 = gregorianToJDN(date2.day, date2.month, date2.year)
+        val jdn1 = gregorianToJDN(date1.day, date1.month, date1.year)
+        val diff = jdn2 - jdn1
+
+        val newStack = state.stack.copy(
+            x               = Hp12cDecimal.of(diff),
+            y               = date2Hp,   // Y = data posterior (o X antigo) — ver §7.2 de calendario.md
+            lastX           = state.stack.x,
+            stackLiftEnabled = true,
+            isEntering      = false,
+        )
+        return state.copy(stack = newStack)
+    }
+
+    // ── Helpers JDN — inteiros puros, sem java.time ────────────────────────
+
+    /**
+     * Gregoriano → Número de Dia Juliano (JDN). Algoritmo de Jean Meeus,
+     * aritmética inteira pura, válido para todo o calendário gregoriano proleptic.
+     * Ver `formulas/calendario.md`, Seção 4.2.
+     */
+    private fun gregorianToJDN(day: Int, month: Int, year: Int): Long {
+        val a = (14 - month) / 12
+        val y = year + 4800 - a
+        val m = month + 12 * a - 3
+        return day.toLong() + (153L * m + 2) / 5 +
+               365L * y + y / 4 - y / 100 + y / 400 - 32045L
+    }
+
+    /**
+     * JDN → Gregoriano. Algoritmo de Jean Meeus, inteiros puros.
+     * Ver `formulas/calendario.md`, Seção 4.2.
+     */
+    private fun jdnToGregorian(jdn: Long): HpDate {
+        val a = jdn + 32044L
+        val b = (4L * a + 3L) / 146097L
+        val c = a - (146097L * b) / 4L
+        val d = (4L * c + 3L) / 1461L
+        val e = c - (1461L * d) / 4L
+        val m = (5L * e + 2L) / 153L
+        val day   = (e - (153L * m + 2L) / 5L + 1L).toInt()
+        val month = (m + 3L - 12L * (m / 10L)).toInt()
+        val year  = (100L * b + d - 4800L + m / 10L).toInt()
+        return HpDate(day, month, year)
+    }
+
+    /**
+     * Dia da semana no código HP 12C (1=Seg, 2=Ter, 3=Qua, 4=Qui, 5=Sex, 6=Sáb, 7=Dom).
+     * JDN mod 7: 0=Seg, 1=Ter, 2=Qua, 3=Qui, 4=Sex, 5=Sáb, 6=Dom → HP code = mod7 + 1.
+     * Ver `formulas/calendario.md`, Seção 4.2 e tabela Seção 4.3.
+     */
+    private fun dayOfWeekHP(jdn: Long): Int = ((jdn % 7L) + 1L).toInt()
+
+    /** `true` se `year` é bissexto no calendário gregoriano. */
+    private fun isLeapYear(year: Int): Boolean =
+        (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
+
+    /** Número de dias no mês `month` do ano `year` (1-based). */
+    private fun daysInMonth(month: Int, year: Int): Int = when (month) {
+        1, 3, 5, 7, 8, 10, 12 -> 31
+        4, 6, 9, 11            -> 30
+        2                      -> if (isLeapYear(year)) 29 else 28
+        else                   -> 0
+    }
+
+    /**
+     * Decodes a HP 12C date value to an [HpDate].
+     *
+     * M.DY (`isMDY=true`):  `MM.DDYYYY` — intPart=month, frac encodes `DDYYYY`.
+     * D.MY (`isMDY=false`): `DD.MMYYYY` — intPart=day,   frac encodes `MMYYYY`.
+     *
+     * Retorna `null` se a decodificação lançar qualquer exceção (valor impossível).
+     */
+    private fun decodeHpDate(value: Hp12cDecimal, isMDY: Boolean): HpDate? {
+        return try {
+            val intPart = value.toIntTruncated()
+            val frac    = value - Hp12cDecimal.of(intPart)
+            val fracInt = (frac * Hp12cDecimal.of(1_000_000)).toIntTruncated()
+            val hi      = fracInt / 10_000   // DD em M.DY, ou MM em D.MY
+            val lo      = fracInt % 10_000   // YYYY em ambos os modos
+            if (isMDY) HpDate(day = hi,       month = intPart, year = lo)
+            else       HpDate(day = intPart,  month = hi,      year = lo)
+        } catch (_: Exception) { null }
+    }
+
+    /**
+     * Encodes an [HpDate] back to HP 12C decimal format.
+     *
+     * M.DY: `MM.DDYYYY` — intPart=month, frac=`padded(DD)padded(YYYY)`.
+     * D.MY: `DD.MMYYYY` — intPart=day,   frac=`padded(MM)padded(YYYY)`.
+     *
+     * O dia/mês é zero-padded para 2 dígitos; o ano para 4. Ex.: jan=1 → "01", 100 d.C. → "0100".
+     */
+    private fun encodeHpDate(date: HpDate, isMDY: Boolean): Hp12cDecimal {
+        val intPart: Int
+        val hi: Int
+        if (isMDY) { intPart = date.month; hi = date.day   }
+        else       { intPart = date.day;   hi = date.month }
+        val hiStr = hi.toString().padStart(2, '0')
+        val yStr  = date.year.toString().padStart(4, '0')
+        return Hp12cDecimal.of("$intPart.$hiStr$yStr")
+    }
+
+    /**
+     * Retorna `true` se [date] é uma data válida no calendário gregoriano suportado pela HP 12C.
+     *
+     * Condições de rejeição (`false`):
+     * - mês fora de [1, 12]
+     * - ano fora de [1, 9999]
+     * - dia fora de [1, máx do mês] (inclui fevereiro bissexto)
+     * - data anterior ao corte gregoriano: 15 out 1582 (JDN 2 299 161)
+     *
+     * Ver `formulas/calendario.md`, Seção 5.
+     */
+    private fun validateHpDate(date: HpDate): Boolean {
+        if (date.month < 1 || date.month > 12) return false
+        if (date.year  < 1 || date.year  > 9999) return false
+        if (date.day   < 1 || date.day   > daysInMonth(date.month, date.year)) return false
+        return gregorianToJDN(date.day, date.month, date.year) >= GREGORIAN_CUTOFF_JDN
     }
 }

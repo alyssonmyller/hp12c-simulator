@@ -17,6 +17,12 @@ data class CalculatorState(
     val memory:    MemoryRegisters    = MemoryRegisters(),
     val display:   DisplayFormat      = DisplayFormat.Default,
 
+    /**
+     * Modo de formatação de datas: M.DY (padrão) ou D.MY.
+     * Controlado por `g D.MY` / `g M.DY` (ver `formulas/calendario.md`, Seção 1.3).
+     */
+    val dateFormat: DateFormat = DateFormat.MDY,
+
     /** Flag C da HP (STO EEX): `true` = juros compostos para período fracionário. Default = simples. */
     val compoundFractionFlag: Boolean = false,
 
