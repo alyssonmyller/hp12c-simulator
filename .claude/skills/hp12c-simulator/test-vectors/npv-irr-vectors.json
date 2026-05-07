@@ -1,0 +1,221 @@
+{
+  "schema_version": "1.0",
+  "meta": {
+    "description": "Vetores de teste para NPV (f NPV) e IRR (f IRR) — manual HP 12C Platinum, Seção 8, p. 79-104. Schema stateful: 'operations' é lista de operações aplicadas em ordem sobre o InitialState; 'expected_x' ou 'error' verificados ao final. Operações disponíveis: store_i (value), cfo (value), cfj (value), nj (value), npv, irr. Todos os valores de 'expected_x' foram calculados manualmente com aritmética exata (frações) e verificados com BigDecimal de 10 dígitos.",
+    "sources": [
+      "bpia5314.pdf — Seção 8, p. 79-104 — comportamento observável",
+      "bpia5314.pdf — Apêndice D, p. 194 — condições de Error 3",
+      "bpia5314.pdf — Apêndice D, p. 197 — condições de Error 7"
+    ],
+    "conventions": {
+      "operations": [
+        "store_i   — grava 'value' no registrador financeiro i (equiv. a digitar valor e pressionar STO i)",
+        "cfo       — g CFo: armazena 'value' como CF0 e limpa todos os fluxos anteriores",
+        "cfj       — g CFj: acrescenta 'value' como próximo CFj",
+        "nj        — g Nj:  define 'value' como repetições do último CFj (inteiro 1–99)",
+        "npv       — f NPV: calcula NPV com o i atual; resultado em X",
+        "irr       — f IRR: calcula IRR; resultado em X (percentual)"
+      ],
+      "number_format": "expected_x é string no formato HP (sem separador de milhar). Comparação via DisplayFormatter(PERIOD_COMMA) + strip de vírgulas, igual ao pipeline de TvmVectorsTest."
+    }
+  },
+  "vectors": [
+
+    {
+      "id": "npv-001",
+      "source": "derivado — NPV = 0 exato, i=10%, 1 período",
+      "description": "CF0=-100, CF1=110, i=10% → NPV = -100 + 110/1.1 = 0.00",
+      "operations": [
+        {"op": "store_i", "value": 10},
+        {"op": "cfo",     "value": -100},
+        {"op": "cfj",     "value": 110},
+        {"op": "npv"}
+      ],
+      "expected_x": "0.00",
+      "format": "FIX 2",
+      "notes": "NPV zero exato: 110/1.1 = 100 sem arredondamento."
+    },
+
+    {
+      "id": "npv-002",
+      "source": "derivado — NPV positivo, i=10%, 2 períodos distintos",
+      "description": "CF0=-100, CF1=50, CF2=80, i=10% → NPV = 11.57",
+      "operations": [
+        {"op": "store_i", "value": 10},
+        {"op": "cfo",     "value": -100},
+        {"op": "cfj",     "value": 50},
+        {"op": "cfj",     "value": 80},
+        {"op": "npv"}
+      ],
+      "expected_x": "11.57",
+      "format": "FIX 2",
+      "notes": "50/1.1=45.454545... + 80/1.21=66.115702... = 111.570247...; NPV=11.570247 → FIX 2: 11.57."
+    },
+
+    {
+      "id": "npv-003",
+      "source": "derivado — NPV negativo com Nj=3, i=10%",
+      "description": "CF0=-5000, CF1=2000 (N1=3), i=10% → NPV = -26.30",
+      "operations": [
+        {"op": "store_i", "value": 10},
+        {"op": "cfo",     "value": -5000},
+        {"op": "cfj",     "value": 2000},
+        {"op": "nj",      "value": 3},
+        {"op": "npv"}
+      ],
+      "expected_x": "-26.30",
+      "format": "FIX 2",
+      "notes": "2000/1.1 + 2000/1.21 + 2000/1.331 = 1818.18... + 1652.89... + 1502.63... = 4973.70...; NPV=-26.296... → -26.30."
+    },
+
+    {
+      "id": "npv-004",
+      "source": "derivado — degenerate i=0",
+      "description": "CF0=-300, CF1=100 (N1=3), i=0% → NPV = 0.00 (soma simples)",
+      "operations": [
+        {"op": "store_i", "value": 0},
+        {"op": "cfo",     "value": -300},
+        {"op": "cfj",     "value": 100},
+        {"op": "nj",      "value": 3},
+        {"op": "npv"}
+      ],
+      "expected_x": "0.00",
+      "format": "FIX 2",
+      "notes": "Com i=0 o NPV é a soma simples: -300 + 3×100 = 0. Testa o ramo degenerado de computeNpv."
+    },
+
+    {
+      "id": "npv-005",
+      "source": "derivado — título com cupom + principal, NPV=0 em i=10%",
+      "description": "CF0=-1000, CF1=100, CF2=1100, i=10% → NPV = 0.00",
+      "operations": [
+        {"op": "store_i", "value": 10},
+        {"op": "cfo",     "value": -1000},
+        {"op": "cfj",     "value": 100},
+        {"op": "cfj",     "value": 1100},
+        {"op": "npv"}
+      ],
+      "expected_x": "0.00",
+      "format": "FIX 2",
+      "notes": "100/1.1=90.9090... + 1100/1.21=909.0909... = 1000.0000; NPV=0. Mesmo exemplo usado para IRR=10% no vetor irr-002."
+    },
+
+    {
+      "id": "npv-006",
+      "source": "derivado — Nj=2 no segundo grupo, i=10%",
+      "description": "CF0=-100, CF1=80, CF2=40 (N2=2), i=10% → NPV = 35.84",
+      "operations": [
+        {"op": "store_i", "value": 10},
+        {"op": "cfo",     "value": -100},
+        {"op": "cfj",     "value": 80},
+        {"op": "cfj",     "value": 40},
+        {"op": "nj",      "value": 2},
+        {"op": "npv"}
+      ],
+      "expected_x": "35.84",
+      "format": "FIX 2",
+      "notes": "80/1.1=72.7272... + 40/1.21=33.0578... + 40/1.331=30.0526... = 135.8377...; NPV=35.8377... → 35.84."
+    },
+
+    {
+      "id": "npv-007",
+      "source": "derivado — g CFo limpa fluxos anteriores",
+      "description": "g CFo pressionado duas vezes: segundo apaga o primeiro CF1; NPV correto é 0.00",
+      "operations": [
+        {"op": "store_i", "value": 10},
+        {"op": "cfo",     "value": -100},
+        {"op": "cfj",     "value": 200},
+        {"op": "cfo",     "value": -100},
+        {"op": "cfj",     "value": 110},
+        {"op": "npv"}
+      ],
+      "expected_x": "0.00",
+      "format": "FIX 2",
+      "notes": "O segundo g CFo=-100 apaga CF1=200; em seguida CF1=110 → NPV=-100+110/1.1=0. Verifica invariante §2.1 de formulas/npv-irr.md: g CFo sempre zera flows."
+    },
+
+    {
+      "id": "irr-001",
+      "source": "derivado — IRR 1 período, forma fechada exata",
+      "description": "CF0=-1000, CF1=1200 → IRR = 20.00% (100×(1200/1000−1))",
+      "operations": [
+        {"op": "cfo", "value": -1000},
+        {"op": "cfj", "value": 1200},
+        {"op": "irr"}
+      ],
+      "expected_x": "20.00",
+      "format": "FIX 2",
+      "notes": "NPV(20%) = -1000 + 1200/1.2 = -1000+1000 = 0. Forma fechada exata, sem iteração necessária."
+    },
+
+    {
+      "id": "irr-002",
+      "source": "derivado — IRR 2 períodos (título com cupom), forma fechada exata",
+      "description": "CF0=-1000, CF1=100, CF2=1100 → IRR = 10.00%",
+      "operations": [
+        {"op": "cfo", "value": -1000},
+        {"op": "cfj", "value": 100},
+        {"op": "cfj", "value": 1100},
+        {"op": "irr"}
+      ],
+      "expected_x": "10.00",
+      "format": "FIX 2",
+      "notes": "100/1.1 + 1100/1.21 = 90.909...+909.090... = 1000.000; IRR=10%. Verifica também que IRR atualiza financial.i para que f NPV retorne 0."
+    },
+
+    {
+      "id": "irr-error-001",
+      "source": "manual, Apêndice D, p. 194 — Error 3",
+      "description": "Todos os fluxos positivos (sem mudança de sinal) → Error 3",
+      "operations": [
+        {"op": "cfo", "value": 100},
+        {"op": "cfj", "value": 200},
+        {"op": "irr"}
+      ],
+      "error": "Error 3",
+      "format": "FIX 2",
+      "notes": "CF0=100, CF1=200: nenhuma mudança de sinal → hasSignChange() = false → Error 3 imediato sem entrar em Newton-Raphson."
+    },
+
+    {
+      "id": "npv-error-001",
+      "source": "manual, Apêndice D, p. 197 — Error 7",
+      "description": "f NPV sem g CFo registrado → Error 7",
+      "operations": [
+        {"op": "store_i", "value": 10},
+        {"op": "npv"}
+      ],
+      "error": "Error 7",
+      "format": "FIX 2",
+      "notes": "cashflow.cf0 == null → Error 7 antes de qualquer cálculo."
+    },
+
+    {
+      "id": "nj-error-001",
+      "source": "manual, Apêndice D, p. 197 — Error 7",
+      "description": "g Nj com X=100 (> 99) → Error 7",
+      "operations": [
+        {"op": "cfo", "value": -100},
+        {"op": "cfj", "value": 50},
+        {"op": "nj",  "value": 100}
+      ],
+      "error": "Error 7",
+      "format": "FIX 2",
+      "notes": "Nj=100 excede o máximo de 99 → Error 7. O CFj anterior é preservado com count=1."
+    },
+
+    {
+      "id": "nj-error-002",
+      "source": "manual, Apêndice D, p. 197 — Error 7",
+      "description": "g Nj sem nenhum g CFj anterior → Error 7",
+      "operations": [
+        {"op": "cfo", "value": -100},
+        {"op": "nj",  "value": 3}
+      ],
+      "error": "Error 7",
+      "format": "FIX 2",
+      "notes": "flows.isEmpty() quando g Nj é pressionado → Error 7."
+    }
+
+  ]
+}
