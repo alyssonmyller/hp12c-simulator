@@ -43,8 +43,9 @@ Fórmulas fechadas conforme aparecem no manual/apostila. **Uma fórmula aqui é 
 - `transcendentais.md` — funções matemáticas e de alteração de números (Seção 7 do manual: `√x`, `1/x`, `x²`, `LN`, `e^x`, `n!`, `y^x`, `INT`, `FRAC`, `RND`) e funções de percentagem (Seção 2: `%`, `Δ%`, `%T`), com domínio, condições de erro e comportamento da pilha para cada função. Inclui 6 ambiguidades documentadas (`0!`, `%`/`%T` com `y=0`, `y^0` com `y<0`, `RND` em SCI/ENG, `LN(1)`/`e^0`, precisão de `sqrt` vs `pow(0.5)`).
 - `estatistica.md` — funções estatísticas (Seção 6 do manual + Apêndice E p. 204-205): `Σ+`, `Σ-`, `g x̄`, `g s`, `g ŷ,r`, `g x̂,r`, `g x̄w`, `f CLEAR Σ`. Cobre compartilhamento de R1..R6 com STO/RCL (§1.2), fórmulas de regressão linear (A, B, r), ambiguidade §8.x (ŷ,r vs x̂,r de manual p. 83), e a tecla especial de desvio-padrão populacional via trick `g x̄ Σ+ g s`.
 - `juros-simples.md` — tecla `f INT` (Seção 5, p. 61-62): fórmula `INT = PV × i × n / 36000`, comportamento de pilha (X ← INT, Y ← PV para facilitar montante via `+`), condições de erro e 3 ambiguidades documentadas (n fracionário, sinal de INT, Y após operação).
+- `calendario.md` — teclas `f DATE`, `f DYS`, `g D.MY`, `g M.DY` (Seção 9, p. 106-113): codificação decimal de datas (`MM.DDYYYY` em M.DY, `DD.MMYYYY` em D.MY), algoritmo JDN (inteiros puros, sem `java.time`), tabela de referência JDN para datas de teste, codificação dia-da-semana (1=Seg … 7=Dom), condições de Error 8, e 4 ambiguidades (Y após DATE, Y após DYS, corte gregoriano, exibição FIX 6).
 
-Planejado para próximas sessões: `calendario.md`, `npv-irr.md`, `amortizacao.md`, `depreciacao.md`.
+Planejado para próximas sessões: `npv-irr.md`, `amortizacao.md`, `depreciacao.md`.
 
 ### `test-vectors/*.json` — rede de segurança empírica
 Cada vetor é um problema resolvido com resposta oficialmente publicada num dos 3 PDFs. Toda implementação de engine tem que passar em 100% dos vetores correspondentes. Atualmente populado:
@@ -53,6 +54,7 @@ Cada vetor é um problema resolvido com resposta oficialmente publicada num dos 
 - `transcendentais-vectors.json` — 34 vetores cobrindo as 13 teclas de função matemática/percentagem (`%`, `Δ%`, `%T`, `1/x`, `x²`, `√x`, `LN`, `e^x`, `n!`, `RND`, `INT`, `FRAC`, `y^x`). 27 vetores de caminho feliz + 7 vetores de erro (5× Error 0, 2× Error 5). Schema adaptado: `inputs` vira `stack` (pilha explícita) e o campo `solve_for` vira `operation` (a tecla pressionada). Vetores de erro usam o campo `error` (ex.: `"error": "Error 0"`) no lugar de `expected`.
 - `estatistica-vectors.json` — 26 vetores cobrindo `Σ+`, `Σ-`, `g x̄`, `g s`, `g ŷ,r`, `g x̂,r`, `g x̄w`, `f CLEAR Σ`. Schema stateful: `operations` é lista de operações sequenciais aplicadas ao estado inicial; `expected_x`/`expected_y` ou `error` verificados ao final. Dois vetores ambíguos (`stat-yhatr-001`, `stat-xhatr-001`) excluídos dos `@Test` — documentam divergência entre manual p. 83 e fórmula padrão ŷ=A+Bx.
 - `juros-simples-vectors.json` — 9 vetores para `f INT` (juros simples, base 360 dias). Schema TVM-like: `inputs` com `n`, `i`, `PV`; `query: "simple_interest"`; `expected_x` (INT) e `expected_y` (PV retido). Cobre caminho feliz (5×), bordas n=0 e i=0, PV negativo, resultado fracionário FIX 4, taxa fracionária.
+- `calendario-vectors.json` — 12 vetores para `f DATE` e `f DYS`. Schema: `op: "date"|"dys"`, `mode: "MDY"|"DMY"`, datas como strings HP (ex: `"6.301994"`), `days` para DATE. Cobre: DATE caminho feliz (manual p. 107), dias negativos, 29/fev ano bissexto, 01/mar após ano não-bissexto, modo D.MY; DYS com span bissexto (366), span normal (365), mesma data (0); Error 8 para fevereiro-30 e fevereiro-29-não-bissexto.
 
 Schema de cada vetor **TVM** (obrigatório):
 
