@@ -7,10 +7,22 @@ import com.arcom.hp12c.engine.math.Hp12cDecimal
 import com.arcom.hp12c.engine.state.CalculatorState
 import com.arcom.hp12c.engine.state.DisplayFormat
 import com.arcom.hp12c.engine.state.NumericSeparator
+import com.arcom.hp12c.engine.state.CashflowEntry
+import com.arcom.hp12c.engine.state.CashflowRegisters
+import com.arcom.hp12c.engine.state.DateFormat
 import com.arcom.hp12c.engine.state.TvmMode
+import com.arcom.hp12c.engine.state.ConditionalTest
+import com.arcom.hp12c.engine.state.ProgramKeyCode
+import com.arcom.hp12c.engine.state.ProgramLabel
+import com.arcom.hp12c.engine.state.ProgramMemory
+import com.arcom.hp12c.engine.state.ProgramState
+import com.arcom.hp12c.engine.state.ProgramStep
+import com.arcom.hp12c.engine.state.ProgramTarget
+import com.arcom.hp12c.engine.state.RegisterId
 import com.arcom.hp12c.engine.state.acceptNewNumber
 import com.arcom.hp12c.engine.state.binaryOp
 import com.arcom.hp12c.engine.state.clx
+import com.arcom.hp12c.engine.state.dualOutputOp
 import com.arcom.hp12c.engine.state.enter
 import com.arcom.hp12c.engine.state.lstx
 import com.arcom.hp12c.engine.state.percentOp
@@ -63,6 +75,7 @@ internal class DefaultEngine : CalculatorEngine {
      * do reducer financeiro, não da aritmética BCD em si.
      */
     private val HUNDRED: Hp12cDecimal = Hp12cDecimal.of(100)
+    private val THIRTY_SIX_THOUSAND: Hp12cDecimal = Hp12cDecimal.of(36000)
 
     override fun reduce(state: CalculatorState, event: Event): CalculatorState {
         // Erro pendente: qualquer tecla limpa e retorna. Réplica do aparelho físico.
@@ -70,7 +83,13 @@ internal class DefaultEngine : CalculatorEngine {
             return state.copy(pendingError = null)
         }
 
+        // Modo de edição PRGM: qualquer evento não-Program é gravado como passo.
+        if (state.programState is ProgramState.Editing && event !is Event.Program) {
+            return recordProgramStep(state, event)
+        }
+
         return when (event) {
+            is Event.Program        -> reduceProgram(state, event)
             is Event.Entry          -> reduceEntry(state, event)
             is Event.StackOp        -> reduceStackOp(state.commitEntry(), event)
             is Event.Arith          -> reduceArith(state.commitEntry(), event)
@@ -80,11 +99,21 @@ internal class DefaultEngine : CalculatorEngine {
             is Event.Financial      -> reduceFinancial(state, event)
             is Event.Transcendental -> reduceTranscendental(state.commitEntry(), event)
             is Event.Percent        -> reducePercent(state.commitEntry(), event)
+            is Event.Statistics     -> reduceStatistics(state.commitEntry(), event)
+            is Event.Calendar       -> reduceCalendar(state, event)
+            is Event.Cashflow       -> reduceCashflow(state.commitEntry(), event)
         }
     }
 
     override fun formatDisplay(state: CalculatorState, separator: NumericSeparator): String =
         DisplayFormatter.format(state, separator)
+
+    /**
+     * Produz um snapshot pronto para persistência: comita o `entryBuffer` em `stack.x`
+     * (se havia entrada em curso) e zera `pendingError`. Ver §3 de `arquitetura/persistence.md`.
+     */
+    override fun normalizeForPersistence(state: CalculatorState): CalculatorState =
+        state.commitEntry().copy(pendingError = null)
 
     // ───────────────────────────────────────────────────────────────────────────
     //  Entry — digit, decimal point, CHS (durante entrada), EEX
@@ -189,7 +218,13 @@ internal class DefaultEngine : CalculatorEngine {
             Event.StackOp.Enter    -> state.copy(stack = state.stack.enter())
             Event.StackOp.ClearX   -> state.copy(stack = state.stack.clx())
             Event.StackOp.RollDown -> state.copy(stack = state.stack.rollDown())
-            Event.StackOp.SwapXY   -> state.copy(stack = state.stack.swapXY())
+            // §8.6 de formulas/estatistica.md: se ŷ,r/x̂,r marcou r inválido, o swap
+            // que tentaria trazer r ao visor dispara Error 2 em vez de realizar a troca.
+            Event.StackOp.SwapXY   -> if (state.statisticsRInvalid) {
+                state.copy(pendingError = Hp12cError.StatisticsCollinear, statisticsRInvalid = false)
+            } else {
+                state.copy(stack = state.stack.swapXY(), statisticsRInvalid = false)
+            }
             Event.StackOp.LastX    -> state.copy(stack = state.stack.lstx())
         }
 
@@ -245,13 +280,19 @@ internal class DefaultEngine : CalculatorEngine {
             // o usuário acabou de digitar um número (Store) ou porque o efeito é funcional e
             // não puramente cosmético (ClearFinancial zera registradores).
             is Event.Financial.Store       -> reduceFinancialStore(state.commitEntry(), event)
-            Event.Financial.ClearFinancial -> state.commitEntry().copy(
+            Event.Financial.ClearFinancial -> {
                 // `f CLEAR FIN` zera só os 5 registradores de TVM — não toca pilha, memórias de
                 // usuário, nem o modo BEG/END (manual, Apêndice A — "Clearing Operations").
-                financial = state.financial.copy(
-                    n = null, i = null, pv = null, pmt = null, fv = null,
-                ),
-            )
+                // Também zera canStoreToTvm: com todos os registradores zerados, pressionar PV
+                // resolve (daria 0), não armazena X no PV.
+                val committed = state.commitEntry()
+                committed.copy(
+                    financial = state.financial.copy(
+                        n = null, i = null, pv = null, pmt = null, fv = null,
+                    ),
+                    stack = committed.stack.copy(canStoreToTvm = false),
+                )
+            }
 
             // Mudança de modo é puramente cosmética: não comita o buffer em digitação, não toca
             // nem na pilha nem nos registradores numéricos — apenas alterna o flag BEG/END. O
@@ -274,7 +315,207 @@ internal class DefaultEngine : CalculatorEngine {
             Event.Financial.ToggleCompoundFractionFlag -> state.copy(
                 compoundFractionFlag = !state.compoundFractionFlag,
             )
+
+            Event.Financial.SimpleInterest -> reduceSimpleInterest(state.commitEntry())
+
+            Event.Financial.Amortize -> reduceAmortize(state.commitEntry())
+
+            Event.Financial.DepreciationSL   -> reduceDepreciation(state.commitEntry(), DepreciationMethod.SL)
+            Event.Financial.DepreciationSOYD -> reduceDepreciation(state.commitEntry(), DepreciationMethod.SOYD)
+            Event.Financial.DepreciationDB   -> reduceDepreciation(state.commitEntry(), DepreciationMethod.DB)
         }
+
+    /**
+     * `f INT` — Juros Simples. Lê `n`, `i` (percentual) e `PV` dos registradores financeiros,
+     * calcula `INT = PV × i × n / 36000` (base 360 dias, manual Seção 5 p. 61) e escreve:
+     *
+     * - X ← INT
+     * - Y ← PV (do registrador financeiro, não Y₀ da pilha — para que `+` dê o montante)
+     * - Z, T inalterados
+     * - LASTx ← X antigo
+     *
+     * Registradores financeiros **não** são atualizados (diferente de TVM `Solve.*`).
+     * Overflow numérico → Error 1 via [Hp12cError.Overflow].
+     */
+    private fun reduceSimpleInterest(state: CalculatorState): CalculatorState {
+        val f = state.financial
+        val n  = f.n  ?: Hp12cDecimal.ZERO
+        val i  = f.i  ?: Hp12cDecimal.ZERO   // percentual, ex: 8 para 8%
+        val pv = f.pv ?: Hp12cDecimal.ZERO
+
+        val result = try {
+            computeSimpleInterest(n, i, pv)
+        } catch (e: ArithmeticException) {
+            return state.copy(pendingError = Hp12cError.StoreOverflow)   // Error 1 — overflow numérico
+        }
+
+        val newStack = state.stack.copy(
+            x = result,
+            y = pv,
+            lastX = state.stack.x,
+            stackLiftEnabled = true,
+            isEntering = false,
+        )
+        return state.copy(stack = newStack)
+    }
+
+    /** `INT = PV × i × n / 36000` — base 360 dias fixa, `i` em percentual. */
+    private fun computeSimpleInterest(
+        n: Hp12cDecimal, i: Hp12cDecimal, pv: Hp12cDecimal,
+    ): Hp12cDecimal = pv * i * n / THIRTY_SIX_THOUSAND
+
+    /**
+     * `f AMORT` — amortiza `n` períodos calculando juros e principal período a período.
+     *
+     * Algoritmo (fonte: `formulas/amortizacao.md` §3):
+     * ```
+     * para k = 1..INT(n):
+     *     interest_k  = -(pv_k × i_dec)
+     *     principal_k = PMT − interest_k
+     *     pv_k        = pv_k + principal_k
+     * ```
+     *
+     * **Pós-condições** (estilo `dualOutputOp` — igual a `g x̄` e `g s`):
+     * - X ← totalInterest
+     * - Y ← totalPrincipal
+     * - Z, T inalterados
+     * - LASTx ← X antigo
+     * - `financial.pv` ← saldo final (único registrador financeiro alterado)
+     * - `financial.n` permanece inalterado (para chamadas consecutivas)
+     *
+     * **Error 6** se `INT(n) ≤ 0` (manual, Apêndice D, p. 195).
+     *
+     * Invariante verificável: `totalInterest + totalPrincipal = INT(n) × PMT`.
+     */
+    private fun reduceAmortize(state: CalculatorState): CalculatorState {
+        val f    = state.financial
+        val nDec = f.n   ?: Hp12cDecimal.ZERO
+        val iPct = f.i   ?: Hp12cDecimal.ZERO
+        val pv0  = f.pv  ?: Hp12cDecimal.ZERO
+        val pmt  = f.pmt ?: Hp12cDecimal.ZERO
+
+        val nInt = nDec.toIntTruncated()
+        if (nInt <= 0) return state.copy(pendingError = Hp12cError.AmortizeInvalidN)
+
+        val iDec = iPct / HUNDRED
+
+        var pv             = pv0
+        var totalInterest  = Hp12cDecimal.ZERO
+        var totalPrincipal = Hp12cDecimal.ZERO
+
+        repeat(nInt) {
+            val interest  = -(pv * iDec)           // negativo para empréstimos padrão
+            val principal = pmt - interest          // parcela de principal do pagamento
+            totalInterest  += interest
+            totalPrincipal += principal
+            pv             += principal             // saldo reduz (principal < 0 em empréstimos)
+        }
+
+        // Pilha: estilo dualOutputOp — escreve X e Y diretamente, Z/T inalterados, LASTx = X₀.
+        val newStack = state.stack.copy(
+            x                = totalInterest,
+            y                = totalPrincipal,
+            lastX            = state.stack.x,
+            stackLiftEnabled = true,
+            isEntering       = false,
+        )
+        // Apenas PV é atualizado; n, i, PMT, FV permanecem inalterados.
+        return state.copy(stack = newStack, financial = f.copy(pv = pv))
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Depreciação — f SL, f SOYD, f DB
+    //  Fonte: `formulas/depreciacao.md` §3-§6, manual HP 12C Platinum Seção 11 p. 78-85.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /** Enum interno que discrimina os três métodos de depreciação. */
+    private enum class DepreciationMethod { SL, SOYD, DB }
+
+    /**
+     * `f SL` / `f SOYD` / `f DB` — depreciação para o ano `j`.
+     *
+     * Lê `j` de `state.stack.x` (valor inserido pelo usuário imediatamente antes da tecla).
+     * Lê `n`, `PV`, `FV` (e `i` para DB) dos registradores financeiros.
+     *
+     * **Pós-condições** (estilo `dualOutputOp`):
+     * - X ← D_j (depreciação do ano j)
+     * - Y ← RDV_j (valor residual ao fim do ano j)
+     * - Z, T inalterados
+     * - LASTx ← j (X antigo)
+     * - stackLiftEnabled = true, isEntering = false
+     * - Nenhum registrador financeiro modificado.
+     *
+     * **Error 6** se `INT(n) ≤ 0` ou `INT(j) ≤ 0` (manual, Apêndice D, p. 195).
+     */
+    private fun reduceDepreciation(state: CalculatorState, method: DepreciationMethod): CalculatorState {
+        val f   = state.financial
+        val j   = state.stack.x                         // ano inserido pelo usuário em X
+
+        val nDec = f.n  ?: Hp12cDecimal.ZERO
+        val iPct = f.i  ?: Hp12cDecimal.ZERO
+        val pv   = f.pv ?: Hp12cDecimal.ZERO
+        val fv   = f.fv ?: Hp12cDecimal.ZERO
+
+        val nInt = nDec.toIntTruncated()
+        val jInt = j.toIntTruncated()
+
+        if (nInt <= 0) return state.copy(pendingError = Hp12cError.DepreciationInvalidN)
+        if (jInt <= 0) return state.copy(pendingError = Hp12cError.DepreciationInvalidYear)
+
+        val nDec10 = Hp12cDecimal.of(nInt)
+        val jDec   = Hp12cDecimal.of(jInt)
+
+        val depreciableAmount = pv - fv          // PV − FV (base depreciável)
+
+        val (dj, rdvj) = try {
+            when (method) {
+                DepreciationMethod.SL -> {
+                    // D_j = (PV−FV)/n  (constante)
+                    // RDV_j = (n−j) × D_j
+                    val d   = depreciableAmount / nDec10
+                    val rdv = (nDec10 - jDec) * d
+                    Pair(d, rdv)
+                }
+                DepreciationMethod.SOYD -> {
+                    // SOYD = n(n+1)/2
+                    // D_j  = (n−j+1) / SOYD × (PV−FV)
+                    // RDV_j = (n−j)(n−j+1) / (n(n+1)) × (PV−FV)
+                    val two  = Hp12cDecimal.of(2)
+                    val soyd = nDec10 * (nDec10 + Hp12cDecimal.ONE) / two
+                    val remaining = nDec10 - jDec                           // n−j
+                    val d   = (remaining + Hp12cDecimal.ONE) / soyd * depreciableAmount
+                    val rdv = remaining * (remaining + Hp12cDecimal.ONE) / (nDec10 * (nDec10 + Hp12cDecimal.ONE)) * depreciableAmount
+                    Pair(d, rdv)
+                }
+                DepreciationMethod.DB -> {
+                    // rate = i / (100 × n)
+                    // D_j  = PV × (1−rate)^(j−1) × rate
+                    // RDV_j = PV × (1−rate)^j − FV
+                    val rate = iPct / (HUNDRED * nDec10)
+                    val oneMinusRate = Hp12cDecimal.ONE - rate
+                    val jMinus1 = jInt - 1
+                    // (1−rate)^(j−1) via powInt for exact integer exponent
+                    val factorJ1 = oneMinusRate.powInt(jMinus1)
+                    val factorJ  = factorJ1 * oneMinusRate
+                    val d   = pv * factorJ1 * rate
+                    val rdv = pv * factorJ - fv
+                    Pair(d, rdv)
+                }
+            }
+        } catch (e: ArithmeticException) {
+            return state.copy(pendingError = Hp12cError.DepreciationInvalidN)
+        }
+
+        // dualOutputOp: X←D_j, Y←RDV_j, Z/T inalterados, LASTx←j
+        val newStack = state.stack.copy(
+            x                = dj,
+            y                = rdvj,
+            lastX            = j,
+            stackLiftEnabled = true,
+            isEntering       = false,
+        )
+        return state.copy(stack = newStack)
+    }
 
     /**
      * Armazena `stack.x` no registrador de TVM correspondente. **Não toca na pilha** (regra 7
@@ -294,7 +535,9 @@ internal class DefaultEngine : CalculatorEngine {
             Event.Financial.Store.Pmt -> state.financial.copy(pmt = x)
             Event.Financial.Store.Fv  -> state.financial.copy(fv  = x)
         }
-        return state.copy(financial = newFinancial)
+        // Após armazenar, o próximo toque numa tecla TVM sem nova entrada RESOLVE (não armazena).
+        val newStack = state.stack.copy(canStoreToTvm = false)
+        return state.copy(financial = newFinancial, stack = newStack)
     }
 
     /**
@@ -382,7 +625,10 @@ internal class DefaultEngine : CalculatorEngine {
             Event.Financial.Solve.N   -> f.copy(n   = result)
             Event.Financial.Solve.I   -> f.copy(i   = result)
         }
+        // pushValue já seta canStoreToTvm=true, mas após um Solve o próximo TVM deve resolver
+        // (não armazenar o resultado que acabou de aparecer). Zeramos explicitamente.
         val newStack = state.stack.copy(lastX = state.stack.x).pushValue(result)
+            .copy(canStoreToTvm = false)
         return state.copy(stack = newStack, financial = newFinancial)
     }
 
@@ -874,6 +1120,216 @@ internal class DefaultEngine : CalculatorEngine {
     private class FactorialDomainException(message: String) : ArithmeticException(message)
 
     // ───────────────────────────────────────────────────────────────────────────
+    //  Statistics — Σ+, Σ-, g x̄, g s, g x̄w, g ŷ,r, g x̂,r, f CLEAR Σ
+    //  Fonte canônica: formulas/estatistica.md + test-vectors/estatistica-vectors.json
+    // ───────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Reducer das 8 teclas estatísticas. Lê/grava R1..R6 diretamente em `MemoryRegisters`
+     * (compartilhamento físico — §1.2 de `formulas/estatistica.md`).
+     *
+     * Política de erros (todos Error 2 — Apêndice D p. 194):
+     *
+     * | Tecla        | Condição                                         |
+     * |--------------|--------------------------------------------------|
+     * | Mean/StdDev/YHatR/XHatR | `n = 0`                             |
+     * | StdDev       | `n = 1`; ou discriminante < 0                   |
+     * | YHatR        | `nΣx² − (Σx)² = 0`                             |
+     * | XHatR        | `nΣy² − (Σy)² = 0`                             |
+     * | WeightedMean | `Σx = 0`                                        |
+     * | SwapXY após ŷ,r/x̂,r | `[nΣx²−(Σx)²]·[nΣy²−(Σy)²] ≤ 0`    |
+     *
+     * Pilha preservada em caso de erro (regra 8 de `stack-behavior.md`).
+     */
+    private fun reduceStatistics(state: CalculatorState, event: Event.Statistics): CalculatorState {
+        return when (event) {
+            Event.Statistics.ClearSigma -> {
+                // Apêndice A p. 181: zera R1..R6 E a pilha inteira. LASTx preservado.
+                val clearedMem = state.memory
+                    .store(RegisterId.R1, Hp12cDecimal.ZERO)
+                    .store(RegisterId.R2, Hp12cDecimal.ZERO)
+                    .store(RegisterId.R3, Hp12cDecimal.ZERO)
+                    .store(RegisterId.R4, Hp12cDecimal.ZERO)
+                    .store(RegisterId.R5, Hp12cDecimal.ZERO)
+                    .store(RegisterId.R6, Hp12cDecimal.ZERO)
+                val clearedStack = state.stack.copy(
+                    x = Hp12cDecimal.ZERO, y = Hp12cDecimal.ZERO,
+                    z = Hp12cDecimal.ZERO, t = Hp12cDecimal.ZERO,
+                    stackLiftEnabled = true, isEntering = false,
+                )
+                state.copy(stack = clearedStack, memory = clearedMem, statisticsRInvalid = false)
+            }
+
+            Event.Statistics.SigmaPlus -> {
+                // Consome (y=stack.y, x=stack.x), atualiza R1..R6, empurra novo n via binaryOp.
+                val x = state.stack.x
+                val y = state.stack.y
+                val n    = state.memory[RegisterId.R1] + Hp12cDecimal.ONE
+                val sumX = state.memory[RegisterId.R2] + x
+                val sumX2= state.memory[RegisterId.R3] + x * x
+                val sumY = state.memory[RegisterId.R4] + y
+                val sumY2= state.memory[RegisterId.R5] + y * y
+                val sumXY= state.memory[RegisterId.R6] + x * y
+                val newMem = state.memory
+                    .store(RegisterId.R1, n)
+                    .store(RegisterId.R2, sumX)
+                    .store(RegisterId.R3, sumX2)
+                    .store(RegisterId.R4, sumY)
+                    .store(RegisterId.R5, sumY2)
+                    .store(RegisterId.R6, sumXY)
+                // binaryOp: Z→Y, T sticky, lastX=x antigo (o x-variável acumulado).
+                val newStack = state.stack.binaryOp { _, _ -> n }
+                state.copy(stack = newStack, memory = newMem, statisticsRInvalid = false)
+            }
+
+            Event.Statistics.SigmaMinus -> {
+                val x = state.stack.x
+                val y = state.stack.y
+                val n    = state.memory[RegisterId.R1] - Hp12cDecimal.ONE
+                val sumX = state.memory[RegisterId.R2] - x
+                val sumX2= state.memory[RegisterId.R3] - x * x
+                val sumY = state.memory[RegisterId.R4] - y
+                val sumY2= state.memory[RegisterId.R5] - y * y
+                val sumXY= state.memory[RegisterId.R6] - x * y
+                val newMem = state.memory
+                    .store(RegisterId.R1, n)
+                    .store(RegisterId.R2, sumX)
+                    .store(RegisterId.R3, sumX2)
+                    .store(RegisterId.R4, sumY)
+                    .store(RegisterId.R5, sumY2)
+                    .store(RegisterId.R6, sumXY)
+                val newStack = state.stack.binaryOp { _, _ -> n }
+                state.copy(stack = newStack, memory = newMem, statisticsRInvalid = false)
+            }
+
+            Event.Statistics.Mean -> {
+                val n = state.memory[RegisterId.R1]
+                if (n.isZero()) return state.copy(pendingError = Hp12cError.StatisticsUnderflow)
+                val meanX = state.memory[RegisterId.R2] / n
+                val meanY = state.memory[RegisterId.R4] / n
+                val newStack = state.stack.dualOutputOp { _ -> Pair(meanX, meanY) }
+                state.copy(stack = newStack, statisticsRInvalid = false)
+            }
+
+            Event.Statistics.StdDev -> {
+                val n = state.memory[RegisterId.R1]
+                if (n.isZero()) return state.copy(pendingError = Hp12cError.StatisticsUnderflow)
+                val nMinusOne = n - Hp12cDecimal.ONE
+                if (nMinusOne.isZero()) return state.copy(pendingError = Hp12cError.StatisticsUnderflow)
+                val sumX  = state.memory[RegisterId.R2]
+                val sumX2 = state.memory[RegisterId.R3]
+                val sumY  = state.memory[RegisterId.R4]
+                val sumY2 = state.memory[RegisterId.R5]
+                // sₓ² = (n·Σx² − (Σx)²) / (n·(n−1))
+                val discX = n * sumX2 - sumX * sumX
+                val discY = n * sumY2 - sumY * sumY
+                if (discX.compareTo(Hp12cDecimal.ZERO) < 0 || discY.compareTo(Hp12cDecimal.ZERO) < 0)
+                    return state.copy(pendingError = Hp12cError.StatisticsUnderflow)
+                val denom = n * nMinusOne
+                val sx = (discX / denom).sqrt()
+                val sy = (discY / denom).sqrt()
+                val newStack = state.stack.dualOutputOp { _ -> Pair(sx, sy) }
+                state.copy(stack = newStack, statisticsRInvalid = false)
+            }
+
+            Event.Statistics.WeightedMean -> {
+                // x̄w = R6 / R2 = Σxy / Σx — §3.2 de formulas/estatistica.md
+                val sumX = state.memory[RegisterId.R2]
+                if (sumX.isZero()) return state.copy(pendingError = Hp12cError.StatisticsUnderflow)
+                val xw = state.memory[RegisterId.R6] / sumX
+                val xOld = state.stack.x
+                val newStack = state.stack.copy(
+                    x = xw, lastX = xOld,
+                    stackLiftEnabled = true, isEntering = false,
+                )
+                state.copy(stack = newStack, statisticsRInvalid = false)
+            }
+
+            Event.Statistics.YHatR -> {
+                // ŷ = A + B·x_new  onde B e A são da regressão y=A+Bx (x=R2, y=R4)
+                val n = state.memory[RegisterId.R1]
+                if (n.isZero()) return state.copy(pendingError = Hp12cError.StatisticsUnderflow)
+                val sumX  = state.memory[RegisterId.R2]
+                val sumX2 = state.memory[RegisterId.R3]
+                val discX = n * sumX2 - sumX * sumX
+                if (discX.isZero()) return state.copy(pendingError = Hp12cError.StatisticsCollinear)
+                val sumY  = state.memory[RegisterId.R4]
+                val sumY2 = state.memory[RegisterId.R5]
+                val sumXY = state.memory[RegisterId.R6]
+                val xNew = state.stack.x
+                val (yhat, r, rInvalid) = computeRegression(n, sumX, sumX2, sumY, sumY2, sumXY, xNew, isYHat = true)
+                val newStack = state.stack.dualOutputOp { _ -> Pair(yhat, r) }
+                state.copy(stack = newStack, statisticsRInvalid = rInvalid)
+            }
+
+            Event.Statistics.XHatR -> {
+                val n = state.memory[RegisterId.R1]
+                if (n.isZero()) return state.copy(pendingError = Hp12cError.StatisticsUnderflow)
+                val sumY  = state.memory[RegisterId.R4]
+                val sumY2 = state.memory[RegisterId.R5]
+                val discY = n * sumY2 - sumY * sumY
+                if (discY.isZero()) return state.copy(pendingError = Hp12cError.StatisticsCollinear)
+                val sumX  = state.memory[RegisterId.R2]
+                val sumX2 = state.memory[RegisterId.R3]
+                val sumXY = state.memory[RegisterId.R6]
+                val yNew = state.stack.x
+                val (xhat, r, rInvalid) = computeRegression(n, sumX, sumX2, sumY, sumY2, sumXY, yNew, isYHat = false)
+                val newStack = state.stack.dualOutputOp { _ -> Pair(xhat, r) }
+                state.copy(stack = newStack, statisticsRInvalid = rInvalid)
+            }
+        }
+    }
+
+    /**
+     * Calcula coeficientes da regressão linear e produz a estimativa pedida + correlação r.
+     *
+     * Fórmulas (Apêndice E p. 205):
+     * ```
+     * B = (nΣxy − ΣxΣy) / (nΣx² − (Σx)²)
+     * A = ȳ − B·x̄
+     * ŷ(x_new) = A + B·x_new          [isYHat=true]
+     * x̂(y_new) = (y_new − A) / B      [isYHat=false]
+     * r = (nΣxy − ΣxΣy) / √[(nΣx²−(Σx)²)·(nΣy²−(Σy)²)]
+     * ```
+     *
+     * Retorna `Triple(estimativa, r, rInvalid)` onde `rInvalid=true` significa que o
+     * denominador de `r` é ≤ 0 (§8.6 de `formulas/estatistica.md`) — nesse caso `r` é
+     * zero (placeholder) e o flag é propagado para `state.statisticsRInvalid`.
+     *
+     * Pré-condição: o caller já verificou que o discriminante relevante (discX para ŷ,r;
+     * discY para x̂,r) é não-zero — logo B é sempre calculável aqui.
+     */
+    private fun computeRegression(
+        n: Hp12cDecimal,
+        sumX: Hp12cDecimal, sumX2: Hp12cDecimal,
+        sumY: Hp12cDecimal, sumY2: Hp12cDecimal,
+        sumXY: Hp12cDecimal,
+        input: Hp12cDecimal,
+        isYHat: Boolean,
+    ): Triple<Hp12cDecimal, Hp12cDecimal, Boolean> {
+        val discX = n * sumX2 - sumX * sumX       // nΣx² − (Σx)²
+        val discY = n * sumY2 - sumY * sumY       // nΣy² − (Σy)²
+        val cross = n * sumXY - sumX * sumY       // nΣxy − ΣxΣy
+
+        val b = cross / discX                     // slope
+        val meanX = sumX / n
+        val meanY = sumY / n
+        val a = meanY - b * meanX                 // intercept
+
+        val estimate = if (isYHat) {
+            a + b * input                         // ŷ = A + Bx
+        } else {
+            (input - a) / b                       // x̂ = (y − A) / B
+        }
+
+        // r = cross / √(discX · discY)
+        val rDenomSq = discX * discY
+        val rInvalid = rDenomSq.compareTo(Hp12cDecimal.ZERO) <= 0
+        val r = if (rInvalid) Hp12cDecimal.ZERO else cross / rDenomSq.sqrt()
+        return Triple(estimate, r, rInvalid)
+    }
+
+    // ───────────────────────────────────────────────────────────────────────────
     //  Percent — %, %T, Δ%
     //  Fonte canônica: formulas/transcendentais.md §2 + Apêndice E do manual (p. 197).
     // ───────────────────────────────────────────────────────────────────────────
@@ -908,5 +1364,758 @@ internal class DefaultEngine : CalculatorEngine {
             // Divisão por zero (y=0 em %T ou Δ%) — manual silencia, tratamos como Error 0.
             state.copy(pendingError = Hp12cError.DivisionByZero)
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Calendário — DATE, DYS, D.MY / M.DY  (manual Seção 9, p. 106-113)
+    //  Ver `formulas/calendario.md` para o algoritmo JDN e a codificação de datas.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /** Tripla (dia, mês, ano) descodificada de um valor HP 12C. */
+    private data class HpDate(val day: Int, val month: Int, val year: Int)
+
+    /**
+     * JDN do primeiro dia do calendário gregoriano: 15 de outubro de 1582.
+     * Valor canônico bem-conhecido: JDN = 2 299 161.
+     */
+    private val GREGORIAN_CUTOFF_JDN: Long = 2_299_161L
+
+    private fun reduceCalendar(state: CalculatorState, event: Event.Calendar): CalculatorState =
+        when (event) {
+            Event.Calendar.Date   -> reduceDate(state.commitEntry())
+            Event.Calendar.Dys    -> reduceDys(state.commitEntry())
+            // SetDmy/SetMdy são puramente cosméticos: não comitam o buffer, não tocam na pilha.
+            Event.Calendar.SetDmy -> state.copy(dateFormat = DateFormat.DMY)
+            Event.Calendar.SetMdy -> state.copy(dateFormat = DateFormat.MDY)
+        }
+
+    /**
+     * `f DATE` — calcula a data resultante após `n` dias a partir de uma data base.
+     *
+     * Entrada da pilha: X = n (nº de dias, pode ser negativo), Y = data base codificada em HP.
+     * Saída:  X = data resultante (mesma codificação M.DY ou D.MY do estado atual),
+     *         Y = código do dia-da-semana (1=Seg … 7=Dom),
+     *         Z e T inalterados, LASTx = n antigo.
+     *
+     * Error 8 se a data base for inválida ou se a data resultante cair fora do intervalo
+     * suportado. Ver `formulas/calendario.md`, Seção 2 e Seção 5.
+     */
+    private fun reduceDate(state: CalculatorState): CalculatorState {
+        val isMDY = state.dateFormat == DateFormat.MDY
+        val nDays = state.stack.x.toIntTruncated().toLong()
+        val startHp = state.stack.y
+
+        val hpDate = decodeHpDate(startHp, isMDY)
+            ?: return state.copy(pendingError = Hp12cError.InvalidDate)
+        if (!validateHpDate(hpDate))
+            return state.copy(pendingError = Hp12cError.InvalidDate)
+
+        val startJDN   = gregorianToJDN(hpDate.day, hpDate.month, hpDate.year)
+        val resultJDN  = startJDN + nDays
+        val resultGreg = jdnToGregorian(resultJDN)
+
+        if (!validateHpDate(resultGreg))
+            return state.copy(pendingError = Hp12cError.DateOutOfRange)
+
+        val resultEncoded = encodeHpDate(resultGreg, isMDY)
+        val dow = Hp12cDecimal.of(dayOfWeekHP(resultJDN))
+
+        val newStack = state.stack.copy(
+            x               = resultEncoded,
+            y               = dow,
+            lastX           = state.stack.x,
+            stackLiftEnabled = true,
+            isEntering      = false,
+        )
+        return state.copy(stack = newStack)
+    }
+
+    /**
+     * `f DYS` — calcula o número de dias entre duas datas.
+     *
+     * Entrada da pilha: X = date2 (posterior), Y = date1 (anterior).
+     * Saída:  X = número de dias (inteiro; negativo se date2 < date1),
+     *         Y = date2 (o X antigo), Z e T inalterados, LASTx = date2 antigo.
+     *
+     * Error 8 se qualquer data for inválida. Ver `formulas/calendario.md`, Seção 3.
+     */
+    private fun reduceDys(state: CalculatorState): CalculatorState {
+        val isMDY  = state.dateFormat == DateFormat.MDY
+        val date2Hp = state.stack.x
+        val date1Hp = state.stack.y
+
+        val date2 = decodeHpDate(date2Hp, isMDY) ?: return state.copy(pendingError = Hp12cError.InvalidDate)
+        if (!validateHpDate(date2)) return state.copy(pendingError = Hp12cError.InvalidDate)
+
+        val date1 = decodeHpDate(date1Hp, isMDY) ?: return state.copy(pendingError = Hp12cError.InvalidDate)
+        if (!validateHpDate(date1)) return state.copy(pendingError = Hp12cError.InvalidDate)
+
+        val jdn2 = gregorianToJDN(date2.day, date2.month, date2.year)
+        val jdn1 = gregorianToJDN(date1.day, date1.month, date1.year)
+        val diff = jdn2 - jdn1
+
+        val newStack = state.stack.copy(
+            x               = Hp12cDecimal.of(diff),
+            y               = date2Hp,   // Y = data posterior (o X antigo) — ver §7.2 de calendario.md
+            lastX           = state.stack.x,
+            stackLiftEnabled = true,
+            isEntering      = false,
+        )
+        return state.copy(stack = newStack)
+    }
+
+    // ── Helpers JDN — inteiros puros, sem java.time ────────────────────────
+
+    /**
+     * Gregoriano → Número de Dia Juliano (JDN). Algoritmo de Jean Meeus,
+     * aritmética inteira pura, válido para todo o calendário gregoriano proleptic.
+     * Ver `formulas/calendario.md`, Seção 4.2.
+     */
+    private fun gregorianToJDN(day: Int, month: Int, year: Int): Long {
+        val a = (14 - month) / 12
+        val y = year + 4800 - a
+        val m = month + 12 * a - 3
+        return day.toLong() + (153L * m + 2) / 5 +
+               365L * y + y / 4 - y / 100 + y / 400 - 32045L
+    }
+
+    /**
+     * JDN → Gregoriano. Algoritmo de Jean Meeus, inteiros puros.
+     * Ver `formulas/calendario.md`, Seção 4.2.
+     */
+    private fun jdnToGregorian(jdn: Long): HpDate {
+        val a = jdn + 32044L
+        val b = (4L * a + 3L) / 146097L
+        val c = a - (146097L * b) / 4L
+        val d = (4L * c + 3L) / 1461L
+        val e = c - (1461L * d) / 4L
+        val m = (5L * e + 2L) / 153L
+        val day   = (e - (153L * m + 2L) / 5L + 1L).toInt()
+        val month = (m + 3L - 12L * (m / 10L)).toInt()
+        val year  = (100L * b + d - 4800L + m / 10L).toInt()
+        return HpDate(day, month, year)
+    }
+
+    /**
+     * Dia da semana no código HP 12C (1=Seg, 2=Ter, 3=Qua, 4=Qui, 5=Sex, 6=Sáb, 7=Dom).
+     * JDN mod 7: 0=Seg, 1=Ter, 2=Qua, 3=Qui, 4=Sex, 5=Sáb, 6=Dom → HP code = mod7 + 1.
+     * Ver `formulas/calendario.md`, Seção 4.2 e tabela Seção 4.3.
+     */
+    private fun dayOfWeekHP(jdn: Long): Int = ((jdn % 7L) + 1L).toInt()
+
+    /** `true` se `year` é bissexto no calendário gregoriano. */
+    private fun isLeapYear(year: Int): Boolean =
+        (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
+
+    /** Número de dias no mês `month` do ano `year` (1-based). */
+    private fun daysInMonth(month: Int, year: Int): Int = when (month) {
+        1, 3, 5, 7, 8, 10, 12 -> 31
+        4, 6, 9, 11            -> 30
+        2                      -> if (isLeapYear(year)) 29 else 28
+        else                   -> 0
+    }
+
+    /**
+     * Decodes a HP 12C date value to an [HpDate].
+     *
+     * M.DY (`isMDY=true`):  `MM.DDYYYY` — intPart=month, frac encodes `DDYYYY`.
+     * D.MY (`isMDY=false`): `DD.MMYYYY` — intPart=day,   frac encodes `MMYYYY`.
+     *
+     * Retorna `null` se a decodificação lançar qualquer exceção (valor impossível).
+     */
+    private fun decodeHpDate(value: Hp12cDecimal, isMDY: Boolean): HpDate? {
+        return try {
+            val intPart = value.toIntTruncated()
+            val frac    = value - Hp12cDecimal.of(intPart)
+            val fracInt = (frac * Hp12cDecimal.of(1_000_000)).toIntTruncated()
+            val hi      = fracInt / 10_000   // DD em M.DY, ou MM em D.MY
+            val lo      = fracInt % 10_000   // YYYY em ambos os modos
+            if (isMDY) HpDate(day = hi,       month = intPart, year = lo)
+            else       HpDate(day = intPart,  month = hi,      year = lo)
+        } catch (_: Exception) { null }
+    }
+
+    /**
+     * Encodes an [HpDate] back to HP 12C decimal format.
+     *
+     * M.DY: `MM.DDYYYY` — intPart=month, frac=`padded(DD)padded(YYYY)`.
+     * D.MY: `DD.MMYYYY` — intPart=day,   frac=`padded(MM)padded(YYYY)`.
+     *
+     * O dia/mês é zero-padded para 2 dígitos; o ano para 4. Ex.: jan=1 → "01", 100 d.C. → "0100".
+     */
+    private fun encodeHpDate(date: HpDate, isMDY: Boolean): Hp12cDecimal {
+        val intPart: Int
+        val hi: Int
+        if (isMDY) { intPart = date.month; hi = date.day   }
+        else       { intPart = date.day;   hi = date.month }
+        val hiStr = hi.toString().padStart(2, '0')
+        val yStr  = date.year.toString().padStart(4, '0')
+        return Hp12cDecimal.of("$intPart.$hiStr$yStr")
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  Fluxos de caixa — g CFo, g CFj, g Nj, f NPV, f IRR
+    //  Fonte canônica: formulas/npv-irr.md + test-vectors/npv-irr-vectors.json
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Reducer das 5 teclas de fluxo de caixa. Comita o buffer antes de qualquer operação
+     * (o caller já chamou `commitEntry()`).
+     *
+     * Erros:
+     * - [Hp12cError.CashflowEmpty]  (Error 7) — `f NPV`/`f IRR` sem `g CFo`.
+     * - [Hp12cError.CashflowNjTooLarge] (Error 7) — `g Nj` com `X < 1` ou `X > 99`.
+     * - [Hp12cError.CashflowTooManyFlows] (Error 7) — `g CFj` quando `flows` já tem 79 entradas.
+     * - [Hp12cError.IrrNoSignChange] (Error 3) — `f IRR` sem mudança de sinal nos fluxos.
+     * - [Hp12cError.IrrNoConverge]   (Error 3) — `f IRR` não convergiu em 100 iterações.
+     *
+     * Pilha preservada em caso de erro (regra 8 de `stack-behavior.md`).
+     */
+    private fun reduceCashflow(state: CalculatorState, event: Event.Cashflow): CalculatorState =
+        when (event) {
+            Event.Cashflow.CashFlowZero -> reduceCFo(state)
+            Event.Cashflow.CashFlowJ    -> reduceCFj(state)
+            Event.Cashflow.CountJ       -> reduceNj(state)
+            Event.Cashflow.Npv          -> reduceNpv(state)
+            Event.Cashflow.Irr          -> reduceIrr(state)
+        }
+
+    /**
+     * `g CFo` — armazena X como CF0 e **limpa toda a lista** `flows`.
+     * Pilha inalterada (igual a STO n). `isEntering` já foi comitado pelo dispatcher.
+     * Ver `formulas/npv-irr.md` §2.1.
+     */
+    private fun reduceCFo(state: CalculatorState): CalculatorState =
+        state.copy(cashflow = CashflowRegisters(cf0 = state.stack.x))
+
+    /**
+     * `g CFj` — acrescenta `CashflowEntry(amount = X, count = 1)` ao final de `flows`.
+     * Error 7 se já existem 79 entradas (máximo de CF1..CF79 com CF0 = 80 total).
+     * Ver `formulas/npv-irr.md` §2.2.
+     */
+    private fun reduceCFj(state: CalculatorState): CalculatorState {
+        val cf = state.cashflow
+        if (cf.flows.size >= 79) return state.copy(pendingError = Hp12cError.CashflowTooManyFlows)
+        return state.copy(
+            cashflow = cf.copy(flows = cf.flows + CashflowEntry(amount = state.stack.x)),
+        )
+    }
+
+    /**
+     * `g Nj` — atualiza o `count` do último `CashflowEntry` em `flows`.
+     * Condições de Error 7:
+     *   - `flows` vazia (nenhum `g CFj` ainda) → [Hp12cError.CashflowEmpty]
+     *   - `X < 1` ou `X > 99` → [Hp12cError.CashflowNjTooLarge]
+     * Ver `formulas/npv-irr.md` §2.3.
+     */
+    private fun reduceNj(state: CalculatorState): CalculatorState {
+        val cf = state.cashflow
+        if (cf.flows.isEmpty())
+            return state.copy(pendingError = Hp12cError.CashflowEmpty)
+        val n = state.stack.x.toIntTruncated()
+        if (n < 1 || n > 99)
+            return state.copy(pendingError = Hp12cError.CashflowNjTooLarge)
+        val updated = cf.flows.toMutableList()
+        updated[updated.lastIndex] = updated.last().copy(count = n)
+        return state.copy(cashflow = cf.copy(flows = updated))
+    }
+
+    /**
+     * `f NPV` — calcula o Valor Presente Líquido usando `financial.i`.
+     * Error 7 se `cf0 == null` (nenhum `g CFo` registrado).
+     * Escreve resultado em X; LASTx ← X antigo; Y/Z/T inalterados.
+     * Ver `formulas/npv-irr.md` §3 para a fórmula iterativa.
+     */
+    private fun reduceNpv(state: CalculatorState): CalculatorState {
+        val cf = state.cashflow
+        val cf0 = cf.cf0 ?: return state.copy(pendingError = Hp12cError.CashflowEmpty)
+        val iPct = state.financial.i ?: Hp12cDecimal.ZERO
+        val iDec = iPct / HUNDRED
+        val result = try {
+            computeNpv(cf0, cf.flows, iDec)
+        } catch (e: ArithmeticException) {
+            return state.copy(pendingError = Hp12cError.IrrNoConverge)
+        }
+        val newStack = state.stack.copy(
+            x                = result,
+            lastX            = state.stack.x,
+            stackLiftEnabled = true,
+            isEntering       = false,
+        )
+        return state.copy(stack = newStack)
+    }
+
+    /**
+     * `f IRR` — calcula a Taxa Interna de Retorno via Newton-Raphson.
+     * Error 3 se os fluxos não têm mudança de sinal ([Hp12cError.IrrNoSignChange]).
+     * Error 3 se não convergir em 100 iterações ([Hp12cError.IrrNoConverge]).
+     * Error 7 se `cf0 == null` ([Hp12cError.CashflowEmpty]).
+     * Escreve IRR (percentual) em X; LASTx ← X antigo; atualiza `financial.i` com IRR.
+     * Ver `formulas/npv-irr.md` §4.
+     */
+    private fun reduceIrr(state: CalculatorState): CalculatorState {
+        val cf  = state.cashflow
+        val cf0 = cf.cf0 ?: return state.copy(pendingError = Hp12cError.CashflowEmpty)
+        if (!hasSignChange(cf0, cf.flows))
+            return state.copy(pendingError = Hp12cError.IrrNoSignChange)
+        val irrPct = try {
+            computeIrr(cf0, cf.flows)
+        } catch (e: IrrNoConvergeSignal) {
+            return state.copy(pendingError = Hp12cError.IrrNoConverge)
+        }
+        val newStack = state.stack.copy(
+            x                = irrPct,
+            lastX            = state.stack.x,
+            stackLiftEnabled = true,
+            isEntering       = false,
+        )
+        // Atualiza financial.i com IRR para que a chamada imediata de f NPV retorne 0.
+        return state.copy(stack = newStack, financial = state.financial.copy(i = irrPct))
+    }
+
+    // ── Cálculos NPV/IRR ───────────────────────────────────────────────────────
+
+    /**
+     * Fórmula NPV iterativa com fator de desconto `d = 1 / (1+i)`.
+     * Ramo degenerado `i = 0`: NPV = soma simples de todos os fluxos.
+     * Ver `formulas/npv-irr.md` §3.2.
+     */
+    private fun computeNpv(
+        cf0: Hp12cDecimal,
+        flows: List<CashflowEntry>,
+        iDec: Hp12cDecimal,
+    ): Hp12cDecimal {
+        var npv = cf0
+        if (iDec.isZero()) {
+            // Caso degenerado: i = 0 → NPV = soma simples dos fluxos
+            for ((amount, count) in flows) npv += amount * Hp12cDecimal.of(count)
+            return npv
+        }
+        val d  = Hp12cDecimal.ONE / (Hp12cDecimal.ONE + iDec)   // fator de desconto
+        var pv = d                                                // pv para o período 1
+        for ((amount, count) in flows) {
+            repeat(count) {
+                npv += amount * pv
+                pv  *= d
+            }
+        }
+        return npv
+    }
+
+    /**
+     * Derivada de NPV em relação a `r` (taxa em decimal):
+     * `f'(r) = -Σ_{t=1}^{T} t · CF(t) / (1+r)^(t+1)`
+     * Equivalente iterativo via `d = 1/(1+r)` e `pv = d^(t+1)`.
+     * Ver `formulas/npv-irr.md` §4.1.
+     */
+    private fun computeNpvDerivative(
+        flows: List<CashflowEntry>,
+        iDec: Hp12cDecimal,
+    ): Hp12cDecimal {
+        val d = Hp12cDecimal.ONE / (Hp12cDecimal.ONE + iDec)
+        var pv  = d * d   // d^2 para período t=1: t · CF(t) · d^(t+1) com t=1 → d^2
+        var t   = 1L
+        var sum = Hp12cDecimal.ZERO
+        for ((amount, count) in flows) {
+            repeat(count) {
+                sum += Hp12cDecimal.of(t) * amount * pv
+                pv  *= d
+                t   += 1L
+            }
+        }
+        return -sum
+    }
+
+    /**
+     * Newton-Raphson para IRR. Chute inicial `r₀ = 0.1` (10%).
+     * Se divergir (`r < −1` ou derivada nula), recomeça com `r₀ = 0.01`.
+     * Critério de convergência: `|r_{n+1} − r_n| < 10⁻⁸`.
+     * Máximo 100 iterações; se não convergir → lança [IrrNoConvergeSignal].
+     * Retorna IRR em **percentual** (ex.: `20.00` para 20%).
+     * Ver `formulas/npv-irr.md` §4.1 e §4.2.
+     */
+    private fun computeIrr(cf0: Hp12cDecimal, flows: List<CashflowEntry>): Hp12cDecimal {
+        val tolerance = Hp12cDecimal.of("0.00000001")  // 10⁻⁸
+        val minusOne  = -Hp12cDecimal.ONE
+
+        fun iterate(r0: Hp12cDecimal): Hp12cDecimal? {
+            var r = r0
+            repeat(100) {
+                val fVal  = computeNpv(cf0, flows, r)
+                val delta = fVal - Hp12cDecimal.ZERO
+                val absDelta = if (delta.compareTo(Hp12cDecimal.ZERO) < 0) -delta else delta
+                if (absDelta < tolerance) return r * HUNDRED
+
+                val df = computeNpvDerivative(flows, r)
+                if (df.isZero()) return null  // derivada nula — tenta outro chute
+                val rNew = r - fVal / df
+                if (rNew.compareTo(minusOne) <= 0) return null  // divergiu
+                val step = rNew - r
+                val absStep = if (step.compareTo(Hp12cDecimal.ZERO) < 0) -step else step
+                r = rNew
+                if (absStep < tolerance) return r * HUNDRED
+            }
+            return null
+        }
+
+        return iterate(Hp12cDecimal.of("0.1"))
+            ?: iterate(Hp12cDecimal.of("0.01"))
+            ?: throw IrrNoConvergeSignal()
+    }
+
+    /**
+     * Retorna `true` se os fluxos de caixa contêm pelo menos uma mudança de sinal.
+     * Um fluxo de valor zero é ignorado na detecção de sinal.
+     * Ver `formulas/npv-irr.md` §6.
+     */
+    private fun hasSignChange(cf0: Hp12cDecimal, flows: List<CashflowEntry>): Boolean {
+        val allValues = buildList {
+            add(cf0)
+            for ((amount, _) in flows) add(amount)
+        }
+        val hasPositive = allValues.any { it.compareTo(Hp12cDecimal.ZERO) > 0 }
+        val hasNegative = allValues.any { it.compareTo(Hp12cDecimal.ZERO) < 0 }
+        return hasPositive && hasNegative
+    }
+
+    /**
+     * Sentinela interna para IRR não convergiu. Separada de [ArithmeticException] para
+     * que o caller mapeie para [Hp12cError.IrrNoConverge] sem ambiguidade.
+     */
+    private class IrrNoConvergeSignal : ArithmeticException("IRR não convergiu")
+
+    /**
+     * Retorna `true` se [date] é uma data válida no calendário gregoriano suportado pela HP 12C.
+     *
+     * Condições de rejeição (`false`):
+     * - mês fora de [1, 12]
+     * - ano fora de [1, 9999]
+     * - dia fora de [1, máx do mês] (inclui fevereiro bissexto)
+     * - data anterior ao corte gregoriano: 15 out 1582 (JDN 2 299 161)
+     *
+     * Ver `formulas/calendario.md`, Seção 5.
+     */
+    private fun validateHpDate(date: HpDate): Boolean {
+        if (date.month < 1 || date.month > 12) return false
+        if (date.year  < 1 || date.year  > 9999) return false
+        if (date.day   < 1 || date.day   > daysInMonth(date.month, date.year)) return false
+        return gregorianToJDN(date.day, date.month, date.year) >= GREGORIAN_CUTOFF_JDN
+    }
+
+    // ───────────────────────────────────────────────────────────────────────────
+    //  Fase 3 — Programação
+    // ───────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Intercepta qualquer evento não-Program em modo de edição e o grava como
+     * `ProgramStep.KeyStep` na posição do cursor.
+     */
+    private fun recordProgramStep(state: CalculatorState, event: Event): CalculatorState {
+        val editing = state.programState as ProgramState.Editing
+        val keyStep = ProgramKeyCode.encode(event) ?: return state  // evento não armazenável — noop
+
+        val steps   = state.programMemory.steps
+        if (steps.size >= ProgramMemory.MAX_STEPS) {
+            return state.copy(pendingError = Hp12cError.ProgramOverflow)
+        }
+        val newSteps = buildList {
+            addAll(steps.take(editing.cursor))
+            add(keyStep)
+            addAll(steps.drop(editing.cursor))
+        }
+        return state.copy(
+            programMemory = ProgramMemory(newSteps),
+            programState  = ProgramState.Editing(editing.cursor + 1),
+        )
+    }
+
+    /** Dispatcher principal da programação — delega pela `ProgramState` atual. */
+    private fun reduceProgram(state: CalculatorState, event: Event.Program): CalculatorState =
+        when (state.programState) {
+            is ProgramState.Idle    -> reduceProgramIdle(state, event)
+            is ProgramState.Editing -> reduceProgramEditing(state, state.programState, event)
+            is ProgramState.Running -> reduceProgramRunning(state, event)
+        }
+
+    // ─── Idle ────────────────────────────────────────────────────────────────
+
+    private fun reduceProgramIdle(state: CalculatorState, event: Event.Program): CalculatorState =
+        when (event) {
+            Event.Program.TogglePrgmMode ->
+                state.copy(programState = ProgramState.Editing(state.programMemory.steps.size))
+
+            Event.Program.RunStop ->
+                if (state.programMemory.steps.isEmpty()) state
+                else executeProgram(state.commitEntry(), 0, emptyList())
+
+            Event.Program.SingleStep ->
+                if (state.programMemory.steps.isEmpty()) state
+                else executeSingleStep(state.commitEntry(), 0)
+
+            Event.Program.BackStep   -> state  // noop em Idle
+            Event.Program.ClearProgram -> state  // só efetivo em Editing
+            Event.Program.Return     -> state  // noop em Idle
+            Event.Program.MemInquiry -> formatMemInquiry(state)
+            Event.Program.Pse        -> state  // noop em Idle
+            is Event.Program.CondXEqZero, is Event.Program.CondXLeqZero,
+            is Event.Program.CondXEqY,    is Event.Program.CondXLtY -> state
+
+            is Event.Program.Goto  -> positionCursor(state, event.target)
+            is Event.Program.Gosub -> {
+                // GSB em Idle executa a subrotina imediatamente
+                val target = resolveTarget(event.target, state.programMemory)
+                if (target < 0) state.copy(pendingError = Hp12cError.InvalidGoto)
+                else executeProgram(state.commitEntry(), target, emptyList())
+            }
+            is Event.Program.Lbl   -> state  // noop em Idle
+        }
+
+    /** `GTO nnn` em Idle: posiciona o cursor (sem executar) para o próximo R/S. */
+    private fun positionCursor(state: CalculatorState, target: ProgramTarget): CalculatorState {
+        val line = resolveTarget(target, state.programMemory)
+        return if (line < 0) state.copy(pendingError = Hp12cError.InvalidGoto)
+        else state.copy(programState = ProgramState.Editing(line))
+            .let { it.copy(programState = ProgramState.Idle) }
+            // Mantemos Idle mas o próximo RunStop deve começar do `line`.
+            // Para simplificar: RunStop sempre começa em pc=0 (TODO passo-27: GTO startPc).
+    }
+
+    // ─── Editing ─────────────────────────────────────────────────────────────
+
+    private fun reduceProgramEditing(
+        state: CalculatorState,
+        editing: ProgramState.Editing,
+        event: Event.Program,
+    ): CalculatorState = when (event) {
+
+        Event.Program.TogglePrgmMode ->
+            state.copy(programState = ProgramState.Idle)
+
+        Event.Program.ClearProgram ->
+            state.copy(programMemory = ProgramMemory(), programState = ProgramState.Editing(0))
+
+        Event.Program.BackStep ->
+            state.copy(programState = ProgramState.Editing(maxOf(0, editing.cursor - 1)))
+
+        Event.Program.SingleStep ->
+            state.copy(programState = ProgramState.Editing(
+                minOf(state.programMemory.steps.size, editing.cursor + 1)
+            ))
+
+        Event.Program.RunStop ->
+            // Sai do modo PRGM e inicia execução
+            executeProgram(state.copy(programState = ProgramState.Idle).commitEntry(), 0, emptyList())
+
+        // Inserção de passos de controle de fluxo
+        is Event.Program.Goto  -> insertStep(state, editing, ProgramStep.Goto(event.target))
+        is Event.Program.Gosub -> insertStep(state, editing, ProgramStep.Gosub(event.target))
+        Event.Program.Return   -> insertStep(state, editing, ProgramStep.Return)
+        is Event.Program.Lbl   -> insertStep(state, editing, ProgramStep.Label(event.label))
+
+        // Inserção de condicionais
+        Event.Program.CondXEqZero  -> insertStep(state, editing, ProgramStep.Conditional(ConditionalTest.XEqZero))
+        Event.Program.CondXLeqZero -> insertStep(state, editing, ProgramStep.Conditional(ConditionalTest.XLeqZero))
+        Event.Program.CondXEqY     -> insertStep(state, editing, ProgramStep.Conditional(ConditionalTest.XEqY))
+        Event.Program.CondXLtY     -> insertStep(state, editing, ProgramStep.Conditional(ConditionalTest.XLtY))
+
+        // Pausa
+        Event.Program.Pse -> insertStep(state, editing, ProgramStep.Pause)
+
+        // MemInquiry e outros de leitura — não inserem passo
+        Event.Program.MemInquiry -> formatMemInquiry(state)
+        Event.Program.BackStep   -> state   // já tratado acima — Kotlin exige exhaustive
+        Event.Program.SingleStep -> state   // idem
+    }
+
+    /** Insere [step] na posição [editing.cursor] e avança o cursor. */
+    private fun insertStep(
+        state: CalculatorState,
+        editing: ProgramState.Editing,
+        step: ProgramStep,
+    ): CalculatorState {
+        val steps = state.programMemory.steps
+        if (steps.size >= ProgramMemory.MAX_STEPS) {
+            return state.copy(pendingError = Hp12cError.ProgramOverflow)
+        }
+        val newSteps = buildList {
+            addAll(steps.take(editing.cursor))
+            add(step)
+            addAll(steps.drop(editing.cursor))
+        }
+        return state.copy(
+            programMemory = ProgramMemory(newSteps),
+            programState  = ProgramState.Editing(editing.cursor + 1),
+        )
+    }
+
+    // ─── Running ─────────────────────────────────────────────────────────────
+
+    private fun reduceProgramRunning(state: CalculatorState, event: Event.Program): CalculatorState =
+        when (event) {
+            Event.Program.RunStop -> state.copy(programState = ProgramState.Idle)
+            else -> state  // outros eventos ignorados durante execução
+        }
+
+    // ─── Execução ─────────────────────────────────────────────────────────────
+
+    /**
+     * Executa o programa sincrônicamente a partir de [startPc] até terminar, com um
+     * limite de segurança para loops infinitos ([MAX_EXEC_STEPS]).
+     */
+    private fun executeProgram(
+        state: CalculatorState,
+        startPc: Int,
+        returnStack: List<Int>,
+    ): CalculatorState {
+        var s = state.copy(programState = ProgramState.Running(startPc, returnStack))
+        var ticks = 0
+        while (true) {
+            val ps = s.programState as? ProgramState.Running ?: break
+            if (ps.pc >= s.programMemory.steps.size) {
+                // Fim do programa — para (equivalente a RTN com stack vazio)
+                s = s.copy(programState = ProgramState.Idle)
+                break
+            }
+            if (ticks++ > MAX_EXEC_STEPS) {
+                s = s.copy(programState = ProgramState.Idle, pendingError = Hp12cError.ProgramOverflow)
+                break
+            }
+            s = executeStep(s, ps)
+            if (s.pendingError != null) {
+                s = s.copy(programState = ProgramState.Idle)
+                break
+            }
+        }
+        return s
+    }
+
+    /** Executa um único passo e retorna. Usado pelo SST em modo Idle. */
+    private fun executeSingleStep(state: CalculatorState, pc: Int): CalculatorState {
+        val steps = state.programMemory.steps
+        if (pc >= steps.size) return state
+        val ps = ProgramState.Running(pc, emptyList())
+        val s  = executeStep(state.copy(programState = ps), ps)
+        // Após SST, ficamos em Idle independente de onde o PC ficou
+        return s.copy(programState = ProgramState.Idle)
+    }
+
+    /** Executa um único passo, retornando o novo estado (com programState atualizado). */
+    private fun executeStep(state: CalculatorState, runState: ProgramState.Running): CalculatorState {
+        val step   = state.programMemory.steps[runState.pc]
+        val nextPc = runState.pc + 1
+
+        return when (step) {
+            is ProgramStep.KeyStep -> {
+                // R/S armazenado no programa = parada explícita
+                if (step.keyCode == ProgramKeyCode.K_RUNSTOP) {
+                    return state.copy(programState = ProgramState.Idle)
+                }
+                val event = ProgramKeyCode.decode(step)
+                    ?: return state.copy(programState = ProgramState.Running(nextPc, runState.returnStack))
+                // Executa o evento normalmente; programState é Running(nextPc) no estado passado,
+                // então o dispatcher de Entry/Arith/etc. o preserva intacto.
+                val withNextPc = state.copy(programState = ProgramState.Running(nextPc, runState.returnStack))
+                reduce(withNextPc, event)
+            }
+
+            is ProgramStep.Goto -> {
+                val target = resolveTarget(step.target, state.programMemory)
+                if (target < 0) state.copy(pendingError = Hp12cError.InvalidGoto)
+                else state.copy(programState = ProgramState.Running(target, runState.returnStack))
+            }
+
+            is ProgramStep.Gosub -> {
+                if (runState.returnStack.size >= ProgramState.Running.MAX_RETURN_DEPTH) {
+                    state.copy(pendingError = Hp12cError.SubroutineOverflow)
+                } else {
+                    val target = resolveTarget(step.target, state.programMemory)
+                    if (target < 0) state.copy(pendingError = Hp12cError.InvalidGoto)
+                    else state.copy(programState = ProgramState.Running(
+                        target, runState.returnStack + nextPc
+                    ))
+                }
+            }
+
+            ProgramStep.Return -> {
+                if (runState.returnStack.isEmpty()) {
+                    state.copy(programState = ProgramState.Idle)
+                } else {
+                    state.copy(programState = ProgramState.Running(
+                        runState.returnStack.last(),
+                        runState.returnStack.dropLast(1),
+                    ))
+                }
+            }
+
+            is ProgramStep.Label ->
+                // Marcador puro — apenas avança o PC
+                state.copy(programState = ProgramState.Running(nextPc, runState.returnStack))
+
+            is ProgramStep.Conditional -> {
+                val skip = !evalConditional(step.test, state)
+                state.copy(programState = ProgramState.Running(
+                    if (skip) nextPc + 1 else nextPc,
+                    runState.returnStack,
+                ))
+            }
+
+            ProgramStep.Pause ->
+                // Engine avança PC; UI deve atrasar o próximo evento (~1 s)
+                state.copy(programState = ProgramState.Running(nextPc, runState.returnStack))
+        }
+    }
+
+    /**
+     * Avalia um [ConditionalTest] contra o estado atual da pilha.
+     * Retorna `true` se a condição for VERDADEIRA (= próximo passo executado).
+     */
+    private fun evalConditional(test: ConditionalTest, state: CalculatorState): Boolean {
+        val x = state.stack.x
+        val y = state.stack.y
+        return when (test) {
+            ConditionalTest.XEqZero  -> x.compareTo(Hp12cDecimal.ZERO) == 0
+            ConditionalTest.XLeqZero -> x.compareTo(Hp12cDecimal.ZERO) <= 0
+            ConditionalTest.XEqY     -> x.compareTo(y) == 0
+            ConditionalTest.XLtY     -> x.compareTo(y) < 0
+        }
+    }
+
+    /**
+     * Resolve um [ProgramTarget] para um índice de linha (0-based).
+     * Retorna `-1` se o destino não existir (→ Error 4).
+     *
+     * - `LineTarget(n)`: direto.
+     * - `LabelTarget(AlphaLabel(ch))`: escaneia steps linearmente a partir de 000
+     *   (manual p. 120: "searches from program line 000").
+     */
+    private fun resolveTarget(target: ProgramTarget, memory: ProgramMemory): Int =
+        when (target) {
+            is ProgramTarget.LineTarget -> {
+                if (target.line in 0..<memory.steps.size) target.line else -1
+            }
+            is ProgramTarget.LabelTarget -> {
+                val label = target.label
+                memory.steps.indexOfFirst { step ->
+                    step is ProgramStep.Label && step.label == label
+                }
+                // indexOfFirst returns -1 when not found — perfeito
+            }
+        }
+
+    /** Formata a consulta de memória (`f MEM`): "nnn-NN" (passos usados - registradores livres). */
+    private fun formatMemInquiry(state: CalculatorState): CalculatorState {
+        // Por simplicidade, exibimos o número de passos em stack.x para que o visor mostre
+        // o valor. O display de "n-m" requer formatação especial que a Fase 4 implementará.
+        val usedSteps = state.programMemory.steps.size
+        val s = state.copy(
+            stack = state.stack.copy(x = Hp12cDecimal.of(usedSteps)),
+            programState = ProgramState.Idle,
+        )
+        return s
+    }
+
+    companion object {
+        /** Proteção contra loops infinitos: máximo de passos executados em uma chamada R/S. */
+        private const val MAX_EXEC_STEPS = ProgramMemory.MAX_STEPS * 100  // 40 000
     }
 }

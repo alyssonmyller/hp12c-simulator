@@ -1,0 +1,183 @@
+{
+  "description": "Vetores de depreciação para f SL, f SOYD, f DB. Schema stateful: operations aplicadas ao InitialState. Fonte: manual HP 12C Platinum, Seção 11, p. 78-85. PV=1000, FV=100, n=5 usados nos exemplos canônicos (resultados exatos em base-10, sem arredondamento de BCD).",
+  "vectors": [
+
+    {
+      "id": "sl-001",
+      "source": "manual, Seção 11, p. 79 — exemplo SL, ano 1",
+      "description": "Depreciação linear, PV=1000, FV=100, n=5, ano j=1. D_1=(1000-100)/5=180. RDV_1=(5-1)×180=720.",
+      "operations": [
+        { "op": "store_n",  "value": 5    },
+        { "op": "store_pv", "value": 1000 },
+        { "op": "store_fv", "value": 100  },
+        { "op": "enter_x",  "value": 1    },
+        { "op": "sl"                       }
+      ],
+      "expected_x": "180.00",
+      "expected_y": "720.00",
+      "format": "FIX 2"
+    },
+
+    {
+      "id": "sl-002",
+      "source": "manual, Seção 11, p. 79 — exemplo SL, ano 3",
+      "description": "Depreciação linear, PV=1000, FV=100, n=5, ano j=3. D_3=180 (constante). RDV_3=(5-3)×180=360.",
+      "operations": [
+        { "op": "store_n",  "value": 5    },
+        { "op": "store_pv", "value": 1000 },
+        { "op": "store_fv", "value": 100  },
+        { "op": "enter_x",  "value": 3    },
+        { "op": "sl"                       }
+      ],
+      "expected_x": "180.00",
+      "expected_y": "360.00",
+      "format": "FIX 2"
+    },
+
+    {
+      "id": "sl-003",
+      "source": "manual, Seção 11, p. 79 — exemplo SL, ano 5 (último)",
+      "description": "Depreciação linear, PV=1000, FV=100, n=5, ano j=5. D_5=180. RDV_5=(5-5)×180=0.",
+      "operations": [
+        { "op": "store_n",  "value": 5    },
+        { "op": "store_pv", "value": 1000 },
+        { "op": "store_fv", "value": 100  },
+        { "op": "enter_x",  "value": 5    },
+        { "op": "sl"                       }
+      ],
+      "expected_x": "180.00",
+      "expected_y": "0.00",
+      "format": "FIX 2"
+    },
+
+    {
+      "id": "soyd-001",
+      "source": "manual, Seção 11, p. 80 — exemplo SOYD, ano 1",
+      "description": "SOYD, PV=1000, FV=100, n=5, ano j=1. SOYD=15. D_1=5/15×900=300. RDV_1=4×5/(5×6)×900=600.",
+      "operations": [
+        { "op": "store_n",  "value": 5    },
+        { "op": "store_pv", "value": 1000 },
+        { "op": "store_fv", "value": 100  },
+        { "op": "enter_x",  "value": 1    },
+        { "op": "soyd"                     }
+      ],
+      "expected_x": "300.00",
+      "expected_y": "600.00",
+      "format": "FIX 2"
+    },
+
+    {
+      "id": "soyd-002",
+      "source": "manual, Seção 11, p. 80 — exemplo SOYD, ano 2",
+      "description": "SOYD, PV=1000, FV=100, n=5, ano j=2. D_2=4/15×900=240. RDV_2=3×4/(5×6)×900=360.",
+      "operations": [
+        { "op": "store_n",  "value": 5    },
+        { "op": "store_pv", "value": 1000 },
+        { "op": "store_fv", "value": 100  },
+        { "op": "enter_x",  "value": 2    },
+        { "op": "soyd"                     }
+      ],
+      "expected_x": "240.00",
+      "expected_y": "360.00",
+      "format": "FIX 2"
+    },
+
+    {
+      "id": "soyd-003",
+      "source": "manual, Seção 11, p. 80 — exemplo SOYD, ano 5 (último)",
+      "description": "SOYD, PV=1000, FV=100, n=5, ano j=5. D_5=1/15×900=60. RDV_5=0×1/(5×6)×900=0.",
+      "operations": [
+        { "op": "store_n",  "value": 5    },
+        { "op": "store_pv", "value": 1000 },
+        { "op": "store_fv", "value": 100  },
+        { "op": "enter_x",  "value": 5    },
+        { "op": "soyd"                     }
+      ],
+      "expected_x": "60.00",
+      "expected_y": "0.00",
+      "format": "FIX 2"
+    },
+
+    {
+      "id": "db-001",
+      "source": "manual, Seção 11, p. 81-82 — exemplo DB, ano 1",
+      "description": "DB 200%, PV=1000, FV=100, n=5, i=200, ano j=1. rate=200/(100×5)=0.40. D_1=1000×0.40=400. RDV_1=1000×0.60-100=500.",
+      "operations": [
+        { "op": "store_n",  "value": 5    },
+        { "op": "store_i",  "value": 200  },
+        { "op": "store_pv", "value": 1000 },
+        { "op": "store_fv", "value": 100  },
+        { "op": "enter_x",  "value": 1    },
+        { "op": "db"                       }
+      ],
+      "expected_x": "400.00",
+      "expected_y": "500.00",
+      "format": "FIX 2"
+    },
+
+    {
+      "id": "db-002",
+      "source": "manual, Seção 11, p. 81-82 — exemplo DB, ano 2",
+      "description": "DB 200%, PV=1000, FV=100, n=5, i=200, ano j=2. D_2=1000×0.60×0.40=240. RDV_2=1000×0.36-100=260.",
+      "operations": [
+        { "op": "store_n",  "value": 5    },
+        { "op": "store_i",  "value": 200  },
+        { "op": "store_pv", "value": 1000 },
+        { "op": "store_fv", "value": 100  },
+        { "op": "enter_x",  "value": 2    },
+        { "op": "db"                       }
+      ],
+      "expected_x": "240.00",
+      "expected_y": "260.00",
+      "format": "FIX 2"
+    },
+
+    {
+      "id": "db-003",
+      "source": "manual, Seção 11, p. 81-82 — exemplo DB, ano 3",
+      "description": "DB 200%, PV=1000, FV=100, n=5, i=200, ano j=3. D_3=1000×0.36×0.40=144. RDV_3=1000×0.216-100=116.",
+      "operations": [
+        { "op": "store_n",  "value": 5    },
+        { "op": "store_i",  "value": 200  },
+        { "op": "store_pv", "value": 1000 },
+        { "op": "store_fv", "value": 100  },
+        { "op": "enter_x",  "value": 3    },
+        { "op": "db"                       }
+      ],
+      "expected_x": "144.00",
+      "expected_y": "116.00",
+      "format": "FIX 2"
+    },
+
+    {
+      "id": "dep-error-001",
+      "source": "manual, Apêndice D, p. 195 — Error 6, n=0",
+      "description": "f SL com n=0 deve gerar Error 6 (INT(n) ≤ 0).",
+      "operations": [
+        { "op": "store_n",  "value": 0    },
+        { "op": "store_pv", "value": 1000 },
+        { "op": "store_fv", "value": 100  },
+        { "op": "enter_x",  "value": 1    },
+        { "op": "sl"                       }
+      ],
+      "error": "Error 6",
+      "format": "FIX 2"
+    },
+
+    {
+      "id": "dep-error-002",
+      "source": "manual, Apêndice D, p. 195 — Error 6, j=0",
+      "description": "f SL com ano j=0 deve gerar Error 6 (INT(j) ≤ 0).",
+      "operations": [
+        { "op": "store_n",  "value": 5    },
+        { "op": "store_pv", "value": 1000 },
+        { "op": "store_fv", "value": 100  },
+        { "op": "enter_x",  "value": 0    },
+        { "op": "sl"                       }
+      ],
+      "error": "Error 6",
+      "format": "FIX 2"
+    }
+
+  ]
+}

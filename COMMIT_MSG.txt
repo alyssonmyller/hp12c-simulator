@@ -1,202 +1,360 @@
-feat(engine): transcendentais + percentagens — Fase 2 bloco 1 implementação (passo 10)
+feat(engine): cashflow — Fase 2 bloco 4 implementação (passo 16)
 
-Fecha o Bloco 1 da Fase 2 transformando os 34 vetores e as 7 seções
-do paperwork do passo 9 em código executável. Engine agora responde
-a 13 teclas novas (`1/x`, `x²`, `√x`, `LN`, `e^x`, `n!`, `RND`, `INT`,
-`FRAC`, `y^x`, `%`, `Δ%`, `%T`) com fidelidade bit-a-bit às regras
-rastreáveis do manual `bpia5314.pdf` (Seção 7 + Seção 2 + Apêndices
-D/E). **Nota de execução**: `:shared:jvmTest` ainda não rodou neste
-sandbox — `services.gradle.org` bloqueado por proxy; validação final
-fica para a próxima máquina dev (ver checklist no fim).
+Fecha o **Bloco 4 (Cashflow / NPV / IRR)** transformando os 17 vetores e as
+11 seções de `formulas/cashflow.md` (passo 15) em código executável.
+Espelha o padrão dos passos 10/12/14: sealed class concreta → estado novo
+→ reducer → suíte de teste ponta-a-ponta. Adiciona também duas correções
+arquiteturais previstas no paperwork: `Hp12cError.kt` (Erro 6 vs 7) e
+`Event.Memory.ClearReg` (zerar financeiros conforme manual p. 61).
 
-## 1. `Event.Transcendental.*` e `Event.Percent.*` concretizados
+## 1. `FinancialRegisters.kt` ganha `cashflowValues` + `cashflowNj`
 
-`commonMain/engine/event/Event.kt` ganhou 13 `data object` novos,
-todos comentários em pt-BR com referência ao manual:
+Dois campos novos + 3 helpers (~80 linhas aditivas):
 
-- `Event.Transcendental.{Reciprocal, Square, Sqrt, Ln, Exp, Factorial,
-  Int, Frac, Round, Power}` — 9 unárias + 1 binária (`Power` é `y^x`).
-- `Event.Percent.{Of, Delta, OfTotal}` — 3 binárias (`%`, `Δ%`, `%T`).
+```kotlin
+val cashflowNj:     List<Int>             = DEFAULT_CASHFLOW_NJ,       // 21x = 1
+val cashflowValues: List<Hp12cDecimal?>   = DEFAULT_CASHFLOW_VALUES,   // 21x null
+```
 
-Os placeholders comentados desde o passo 3 foram substituídos por
-`sealed class` concretas com doc rastreável: cada evento tem uma
-linha citando `formulas/transcendentais.md §N` e a página do manual.
-API pública da Fase 2 permanece **puramente aditiva** — nenhum evento
-da Fase 1 foi renomeado ou movido.
+Companion: `DEFAULT_CASHFLOW_NJ` e `DEFAULT_CASHFLOW_VALUES`.
 
-## 2. `reduceTranscendental` + `reducePercent` em `DefaultEngine`
+3 helpers imutáveis: `withCashflowNj(j, count)`, `withCashflowValue(j, value)`,
+`withCashflowZero(cf0)` (reset estilo `g CFo`). Custo O(21) por chamada —
+desprezível na cadência de uso (1-30 chamadas por sessão de cashflow).
 
-~130 linhas novas no `DefaultEngine.kt`:
+**Decisão MVP** (formula doc §2 simplificada): armazenamento exclusivo em
+`FinancialRegisters`, **sem compartilhamento** com `MemoryRegisters.R0..R9`.
+A formula doc original previa "compartilhamento físico R0..R20 com STO/RCL
+do usuário", mas isso exigiria estender `RegisterId` (atualmente R0..R9 +
+RI) para R10..R20 e sincronizar dois caminhos de escrita. Como nenhum
+vetor canônico do bloco 4 exercita essa colisão, postpomos a fidelidade
+total para uma fase posterior. Documentação na KDoc do campo.
 
-- **Dispatcher** no entrypoint: `is Event.Transcendental ->
-  reduceTranscendental(state.commitEntry(), event)` e
-  `is Event.Percent -> reducePercent(state.commitEntry(), event)`.
-  `commitEntry()` finaliza qualquer buffer antes da operação —
-  consistente com `Arith`/`Financial.Solve` da Fase 1.
+## 2. `Hp12cError.kt` — correção de códigos Erro 6 vs 7
 
-- **reduceTranscendental** aplica `stack.unaryOp`/`binaryOp` dos
-  helpers já prontos do passo 2, escolhendo por família:
-  - `Reciprocal, Square, Sqrt, Ln, Exp, Factorial, Int, Frac` →
-    `unaryOp { x -> ... }` — preenchem `LASTx` normalmente.
-  - `Round` → caso **especial** sem LASTx: lê `state.display`
-    para descobrir casas decimais, chama `applyRound(x, display)`,
-    atualiza só `stack.x` preservando `lastX` antigo (regra
-    excepcional manual p. 86 / `stack-behavior.md`).
-  - `Power` (y^x) → `binaryOp` — desce a pilha normalmente.
+**Mudança de design** prescrita pela formula doc §10.4. O `Hp12cError.kt`
+original mapeava errors de cashflow para **Erro 7**, mas o manual Apêndice D
+p. 195 categoricamente os classifica como **Erro 6**. Reclassificações:
 
-- **reducePercent** usa os três helpers distintos conforme a
-  idiossincrasia do §6 das fórmulas:
-  - `Of` (`%`) → `stack.percentOp { y, x -> y * x / 100 }` — retém Y.
-  - `OfTotal` (`%T`) → `stack.percentOp { y, x -> x * 100 / y }` —
-    retém Y (`y = 7.95`, `x = 2.36` → `29.69`).
-  - `Delta` (`Δ%`) → `stack.binaryOp { y, x -> (x - y) * 100 / y }`
-    — **desce** a pilha (binária clássica, ver §2.2 das fórmulas).
+| Object antigo                       | Code antigo | Object novo            | Code novo |
+|-------------------------------------|-------------|------------------------|-----------|
+| `CashflowEmpty` (Erro 7, NPV s/CFo) | 7           | **REMOVIDO**           | —         |
+| `CashflowNjTooLarge` (Erro 7)       | 7           | `CashflowInvalidNj`    | **6**     |
+| `CashflowTooManyFlows` (Erro 7)     | 7           | `CashflowNTooLarge`    | **6**     |
+| `IrrNoSignChange` (Erro 3)          | 3           | (mesmo nome, code novo) | **7**    |
 
-- **Mapeamento de erros** via try/catch por família (pilha preservada
-  em todo caso, regra 8 da Seção 5 de `stack-behavior.md`):
-  - `ArithmeticException` genérica → `Hp12cError.InvalidOperation`
-    (Error 0) — cobre `1/0`, `√(-1)`, `LN(0)`, `LN(-5)`, `(-2)^0.5`,
-    `0^(-1)`, `Δ%/%T` com `y=0`, etc.
-  - `FactorialDomainException` (sentinela interna) →
-    `Hp12cError.FactorialDomain` (Error 5) — `(-3)!`, `2.5!`.
-  - Overflow de `e^x`/`n!`/`y^x` grande → `ArithmeticException`
-    do `MathContext(10, …)` quando excede faixa BCD → `Error 0`
-    (conservador; refinamento para Error 1 fica aberto, ambiguidade
-    #2 de `referencias/error-codes.md`).
+`CashflowEmpty` foi **removido** porque a HP física aceita `n=0` (apenas
+CF₀) e calcula `NPV = CF₀` sem disparar erro — vetor `cf-npv-only-cfo`
+valida. A condição "NPV/IRR sem CFo" não existe como erro independente
+no manual.
 
-- **Helpers privados novos**:
-  - `factorial(x)` — recursão de 2..n com guard `n>69` (overflow BCD);
-    `n<0` ou `n∉ℤ` lança `FactorialDomainException`; `0!=1` e `1!=1`
-    como caso base (ambiguidade #1 resolvida a favor do Apêndice E).
-  - `applyRound(x, display)` — ponte `FIX n` → `x.round(n)` sobre
-    `Hp12cDecimal`; `SCI n`/`ENG n` arredondam `n+1` significativos
-    da mantissa (ambiguidade #4 do §7).
-  - `truncateTowardsZero(x)` — base de `INT` (`INT(-3.88) = -3`) e
-    de `FRAC` (via `x - INT(x)` para manter sinal: `FRAC(-3.88) =
-    -0.88`, vetor bandeira `trans-frac-002`).
-  - `errorForTranscendental(exception)` — fan-out único do mapeamento
-    Exception → Hp12cError, facilita auditoria.
+`CashflowTooManyFlows` foi **renomeado** porque o limite antigo (80, do
+HP 12C original) estava errado. Platinum: limite **20** (Apêndice D
+p. 195: "n > 20" sob Erro 6).
 
-## 3. `Hp12cDecimal.sqrt()` — real em JVM, stub em iOS
+`CashflowInvalidNj` é mais genérico que `CashflowNjTooLarge`: cobre as 4
+condições do Apêndice D — `x > 99`, `x < 0`, `x não inteiro`, "Nⱼ no
+lugar do CF₀".
 
-`commonMain/engine/math/Hp12cDecimal.kt`: nova entrada na
-`expect class` (`fun sqrt(): Hp12cDecimal`) — interface fechada cresce
-em 1 método.
+`IrrNoSignChange` corrigido de Erro 3 para Erro 7 (Apêndice C Caso 4).
+Agora há separação limpa: Erro 3 = "não convergiu" (Caso 3), Erro 7 =
+"sem solução possível" (Caso 4).
 
-`jvmCommonMain/.../Hp12cDecimal.kt`: `actual fun sqrt()` delega direto
-para `java.math.BigDecimal.sqrt(MathContext(10, HALF_EVEN))`.
-Ambiguidade #6 de `formulas/transcendentais.md §7` explicita:
-`pow(0.5)` via caminho genérico `exp(0.5·ln(x))` acumula 1-2 ULP na
-última casa e quebra `trans-sqrt-002` (√2 em FIX 9); `BigDecimal.sqrt`
-é a única forma de permanecer bit-idêntico à HP física. Argumento
-negativo propaga `ArithmeticException` nativo, mapeado no reducer.
+API agora consistente com manual. Suíte vai forçar a correção: 4 vetores
+`cf-error-nj-*` esperam Erro 6; 2 vetores `cf-error-irr-no-sign-change-*`
+esperam Erro 7. **Nenhum** vetor da Fase 1 ou dos passos 10-14 referencia
+os objects renomeados/removidos — a mudança é "data-only" e não quebra
+testes existentes.
 
-`iosMain/.../Hp12cDecimal.kt`: `actual fun sqrt() = todoIos()` —
-mesmo padrão dos outros transcendentais, desbloqueia na Fase 4 com
-`kotlin-multiplatform-bignum` ou impl manual.
+## 3. `Event.Financial.Recall.*` — sealed class nova
 
-## 4. `Hp12cError.FactorialDomain` — novo código-5
+Adicionada para suportar os 3 vetores de cashflow que precisam ler
+registradores financeiros pós-cálculo (`cf-npv-stores-pv`, `cf-irr-stores-i`,
+`cf-rcl-n-after-cfj-build`, `cf-clear-reg-001`):
 
-`commonMain/engine/error/Hp12cError.kt`: novo `data object` no grupo
-Error 5 (`val code: Int = 5`), irmão de `TvmInvalidSigns`. Justificativa
-no manual: Apêndice D p. 195 lista explicitamente "factorial de número
-não-inteiro ou negativo" como Error 5 (não Error 0 como sugeriria
-"operação matemática inválida"). Decisão tomada no passo 9 (§3.6 de
-`formulas/transcendentais.md`), concretizada aqui.
+```kotlin
+sealed class Recall : Financial() {
+    object N   : Recall()
+    object I   : Recall()
+    object Pv  : Recall()
+    object Pmt : Recall()
+    object Fv  : Recall()
+}
+```
 
-Motivo de separar de `TvmInvalidSigns`: embora ambos sejam código 5,
-a `reason` é semanticamente distinta ("TVM com PV e FV mesmo sinal"
-vs "fatorial de domínio inválido") e o usuário da API ganha em poder
-discriminar sem depender só do código numérico.
+Paralelo a `Event.Memory.Recall(RegisterId)` mas para registradores
+financeiros. Tratamento de `null` (não-inicializado): empurra `ZERO`.
+Empurra valor via `state.stack.pushValue(value)` que respeita `stackLift`.
+Comita buffer antes do push.
 
-## 5. `TranscendentalsVectorsTest` — 34 vetores ponta-a-ponta
+## 4. `reduceCashflow` em `DefaultEngine.kt` — ~390 linhas
 
-**Novos arquivos em `commonTest/`:**
+Novo dispatcher + 5 helpers `apply*` + 4 helpers numéricos +
+4 sentinelas privadas:
 
-- `testing/TranscendentalsVectorJson.kt` (~50 linhas) —
-  `@Serializable internal data class` companheiros:
-  `TranscendentalsVectorsFile` (wrapper) e `TranscendentalsVectorJson`
-  (`id`, `source`, `description`, `stack: List<String>`, `operation:
-  String`, `expected: String?`, `error: String?`, `format: String`,
-  `stack_after: Map<String, String>? = null`, `notes: String? = null`).
-  Reusa o `internal val VectorsJson: Json` do `TvmVectorJson.kt` com
-  `ignoreUnknownKeys = true` — uma única configuração de `Json` no
-  module de teste.
+```kotlin
+private fun reduceCashflow(state: CalculatorState, event: Event.Cashflow): CalculatorState {
+    return try {
+        when (event) {
+            Event.Cashflow.CashFlowZero -> applyCashFlowZero(state)
+            Event.Cashflow.CashFlowJ    -> applyCashFlowJ(state)
+            Event.Cashflow.CountJ       -> applyCountJ(state)
+            Event.Cashflow.Npv          -> applyNpv(state)
+            Event.Cashflow.Irr          -> applyIrr(state)
+        }
+    } catch (e: CashflowOverflowException)  { state.copy(pendingError = Hp12cError.CashflowNTooLarge) }
+      catch (e: InvalidNjException)         { state.copy(pendingError = Hp12cError.CashflowInvalidNj) }
+      catch (e: IrrNoSignChangeException)   { state.copy(pendingError = Hp12cError.IrrNoSignChange) }
+      catch (e: IrrNoConvergeException)     { state.copy(pendingError = Hp12cError.IrrNoConverge) }
+}
+```
 
-- `engine/TranscendentalsVectorsTest.kt` (~200 linhas, 34 `@Test`) —
-  mirror do `TvmVectorsTest` adaptado ao schema RPN:
-  - `companion object` com `by lazy` cache do JSON (uma leitura I/O
-    para todos os 34 testes).
-  - 34 `@Test trans_XXX_descricao()` cada uma de uma linha
-    (`runVector("trans-XXX")`) — mesmo padrão do passo 8.
-  - Helpers próprios:
-    - `stackFromList(xs: List<String>): Stack` — último elem = X,
-      anteriores preenchem Y/Z/T de baixo para cima, zeros no resto,
-      `stackLiftEnabled = true`, `isEntering = false`, `lastX = ZERO`.
-    - `operationToEvent(op: String): Event` — mapa literal JSON →
-      Event: `"reciprocal"` → `Reciprocal`, `"sqrt"` → `Sqrt`,
-      `"percent"` → `Percent.Of`, `"delta_percent"` → `Percent.Delta`,
-      `"percent_total"` → `Percent.OfTotal`, `"power"` → `Power`, etc.
-      Erro explícito se alguém renomear o literal do JSON sem atualizar
-      o mapa — dupla-de-freios, não silenciosamente-passa.
-    - `parseFormat(fmt: String): DisplayFormat` — `"FIX n"`/`"SCI n"`/
-      `"ENG n"` idêntico ao helper do `TvmVectorsTest`.
-    - `parseErrorCode(raw: String): Int?` — extrai N de `"Error N"`.
-  - `runVector(id)` dispatcha por tipo de vetor:
-    - **Caminho-erro** (`error != null`): assert `state.pendingError
-      != null`, `state.pendingError.code == código esperado`.
-    - **Caminho-feliz** (`expected != null`): render do display em
-      `PERIOD_COMMA`, strip de vírgulas, compara com `expected`
-      (mesmo pipeline do passo 8).
-    - **Caminho-stack** (`stack_after != null`): compara `Hp12cDecimal`
-      por **valor** via `.equals` (que usa `compareTo == 0`, então
-      `of("300") == of("300.00")` — fragile-string-normalization
-      evitada). Chave `"y"` bate com `state.stack.y`, etc.
+### Helper `applyCashFlowZero(state)` — `g CFo`
 
-**Vetores-bandeira de ambiguidade** todos com teste próprio:
-- `trans-fact-003` — `0! = 1` (Apêndice E vence sobre Apêndice D).
-- `trans-frac-002` — `FRAC(-3.88) = -0.88` (sinal preservado).
-- `trans-pct-retain-002` — `300 ENTER 15 %` deixa Y = 300.
+Delega para `FinancialRegisters.withCashflowZero(state.stack.x)` que
+armazena CF₀ em `cashflowValues[0]`, zera contador `n` e reseta todos os
+`Nⱼ` para default 1. Pilha preservada (regra 7).
 
-**Convenção de identificadores**: `trans_dpct_001_delta_pct_acoes`
-(não `ações`) — ASCII only em nomes de função Kotlin, pt-BR só em
-docstrings/comentários, padrão do projeto.
+### Helper `applyCashFlowJ(state)` — `g CFj`
 
-**Total da suíte (projeção)**: 185 → **≈219** casos de teste
-(185 da Fase 1 + 34 novos da TranscendentalsVectorsTest). Unit tests
-adicionais de `Hp12cDecimal.sqrt` não foram escritos neste passo —
-os 3 vetores happy-path de `sqrt` (`trans-sqrt-001..003`) cobrem via
-integração; teste unitário dedicado fica como débito técnico se a
-coverage não satisfizer.
+Lê `nCurr = financial.n.toIntForCashflow()` (default 0 se null), calcula
+`nNext = nCurr + 1`. Se `nNext > 20` → `CashflowOverflowException` →
+Erro 6. Senão atualiza `cashflowValues[nNext] ← x`, `cashflowNj[nNext] ← 1`
+(default sobrescrito pelo próximo `g Nj`), `n ← nNext`. Pilha preservada.
 
-## Execução pendente: `:shared:jvmTest` em máquina com rede aberta
+### Helper `applyCountJ(state)` — `g Nj`
 
-`./gradlew :shared:jvmTest` não rodou neste sandbox: o proxy Cowork
-bloqueia `services.gradle.org` (HTTP 403 no CONNECT), impedindo o
-wrapper de baixar o distrib do Gradle 9.3.1. `kotlinc`/`gradle`
-locais não estão disponíveis. Nenhum workaround é aceitável —
-rodar em ambiente dev é o checklist #1 de fechamento do passo.
+Pré-cheque `nCurr ≥ 1` (Nⱼ antes de qualquer CFⱼ → `InvalidNjException`).
+`x.toIntForNj()` valida `[1, 99]` inteiro (4 casos do Apêndice D
+sintetizados em uma extension). Atualiza `cashflowNj[nCurr] ← x`. Pilha
+preservada.
 
-**Hipótese de trabalho**: verifiquei manualmente por inspeção o chain
-completo para os 3 vetores-bandeira (`Event → reducer → StackOps →
-Hp12cDecimal`) e os tipos batem, imports resolvem, pilha e LASTx
-evoluem conforme o esperado. Mas não há substituto para ver o CI
-verde — se quebrar na execução real, o fix é um passo 10.1 dedicado.
+### Helper `applyNpv(state)` — `f NPV`
 
-## Invariantes preservados
+Caso `i = 0`: fórmula linear (`Σ CFⱼ · Nⱼ`) — desvio explícito do `(1-(1+i)^(-Nⱼ))/i`
+para evitar divisão por zero (formula doc §6 fim).
 
-- **#1 — 10 dígitos BCD HALF_EVEN**: `sqrt` usa `MathContext(10,
-  HALF_EVEN)` nativo do `BigDecimal`; `factorial` opera inteiro até
-  overflow; `round`/`int`/`frac` apoiam-se em `Hp12cDecimal` já
-  arredondado. `pow(0.5)` explicitamente proibido (ambiguidade #6).
-- **#2 — 10 códigos `Error`**: aditivo puro — novo membro
-  `FactorialDomain` no grupo 5, zero códigos da Fase 1 movidos/renomeados.
-- **#3 — pilha RPN 4 níveis + LASTx**: três cenários distintos
-  honrados (unária-com-LASTx, unária-sem-LASTx para `RND`,
-  binária-que-retém-Y para `%`/`%T`).
-- **#4 — todo exemplo resolvido é teste**: 34 vetores no JSON,
-  20 diretamente do manual bpia5314.pdf p. 27-29 e 85-87; todos
-  cobertos por `@Test` individual no `TranscendentalsVectorsTest`.
-- **#5 — memória contínua**: escopo Fase 4, não tocado.
+Caso geral: itera j=1..nCurr; para cada grupo computa `cfJ · annuityFactor
+· discountToStart`, onde:
+- `annuityFactor = (1 - (1+i)^(-Nⱼ)) / i`  — anuidade dos Nⱼ períodos
+- `discountToStart = (1+i)^(-cumPeriod)`    — desconto até o início do grupo
 
-Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
+Implementação pure function `computeNpv(fin, iDec, nCurr): Hp12cDecimal`
+— reutilizável pelo Newton-Raphson da IRR.
+
+Pós-condição: X ← NPV via `pushValue`, `financial.pv ← NPV`.
+
+### Helper `applyIrr(state)` — `f IRR`
+
+1. **Pré-cheque de sinal** (Apêndice C Caso 4): expande grupos via
+   `cashflowNj`, verifica se há ao menos um CF positivo E um negativo.
+   Se não há mudança de sinal → `IrrNoSignChangeException` → Erro 7.
+
+2. **Newton-Raphson com fallback chain** (formula doc §7.2): tentar a
+   partir de cada chute em `{0%, 10%, -50%, 100%}`. Cada tentativa: máx
+   100 iter com tolerância `|NPV| < 10⁻⁸`.
+
+3. Se nenhum chute converge → `IrrNoConvergeException` → Erro 3.
+
+`newtonRaphsonIrr(fin, nCurr, i0): Hp12cDecimal?` — diferença finita
+central com `h = 10⁻⁶`:
+
+```
+NPV'(i) ≈ (NPV(i + h) - NPV(i - h)) / (2h)
+i_{k+1} = i_k - NPV(i_k) / NPV'(i_k)
+```
+
+Retorna `null` (caller tenta próximo chute) em 3 condições:
+- Derivada próxima de zero (denominador instável)
+- Iteração saiu de `[-1, 1000]` (divergência)
+- `ArithmeticException` em `computeNpv` (overflow numérico)
+
+Pós-condição em sucesso: X ← IRR (em percentual) via `pushValue`,
+`financial.i ← IRR%`.
+
+### Helpers numéricos
+
+- `Hp12cDecimal.toIntForCashflow()` — converte `n` para Int validando
+  inteiro. Lança `CashflowOverflowException`.
+- `Hp12cDecimal.toIntForNj()` — converte para Int validando `[1, 99]`
+  inteiro. Lança `InvalidNjException`.
+- `Hp12cDecimal.absLocal()` — extension privada para valor absoluto. Não
+  reabre o expect class só por causa do bloco 4.
+
+### Sentinelas privadas
+
+```kotlin
+private class CashflowOverflowException(message: String) : ArithmeticException(message)
+private class InvalidNjException(message: String)        : ArithmeticException(message)
+private class IrrNoSignChangeException(message: String)  : ArithmeticException(message)
+private class IrrNoConvergeException(message: String)    : ArithmeticException(message)
+```
+
+Mesmo padrão do bloco 2 (`StatUnderflowException`/`StatCollinearException`)
+e bloco 3 (`InvalidDateException`/`DateOutOfRangeException`).
+
+## 5. `reduceFinancialRecall` em `DefaultEngine.kt`
+
+Linha cirúrgica adicionada ao dispatcher de `reduceFinancial`:
+
+```kotlin
+is Event.Financial.Recall -> reduceFinancialRecall(state.commitEntry(), event)
+```
+
+Implementação simples (~12 linhas): `when` sobre o object Recall, lê o
+campo correspondente do `FinancialRegisters` (com fallback para `ZERO` se
+null), empurra via `state.stack.pushValue(value)`. `LASTx` não é tocado
+(RCL não destrói X).
+
+## 6. Correção de `Event.Memory.ClearReg`
+
+Manual p. 61 explicita: "Aperte `f CLEAR REG` para zerar **os registros
+financeiros e de armazenamento**." A versão original do reducer só zerava
+memória — corrigido no passo 16:
+
+```kotlin
+Event.Memory.ClearReg -> state.copy(
+    memory = state.memory.clearAll(),
+    financial = FinancialRegisters(mode = state.financial.mode),  // preserva mode
+    statisticalState = StatisticalState.Empty,
+    lastResultDow = null,
+)
+```
+
+Preservações deliberadas:
+- `mode` (BEG/END) — campo de configuração, não de cálculo
+- `compoundFractionFlag` (flag C, STO EEX) — idem
+- `dateFormat` (M.DY/D.MY) — formula doc §1 de calendário
+
+Resets adicionais:
+- `statisticalState.rInvalid` zerado (operação destrutiva limpa flag)
+- `lastResultDow` zerado (decoração de DATE não sobrevive a CLEAR REG)
+- `cashflowNj` e `cashflowValues` resetados (parte do
+  `FinancialRegisters()` default)
+
+Vetor `cf-clear-reg-001` valida: após `clear_reg`, `RCL n` exibe `0.00`.
+
+## 7. Suíte de teste — `CashflowVectorsTest.kt` + `CashflowVectorJson.kt`
+
+### `commonTest/testing/CashflowVectorJson.kt` — schema v2 stateful (~79 linhas)
+
+3 `@Serializable internal data class`. Vocabulário com 13 ops (`clear_reg`,
+`cfo`, `cfj`, `nj`, `i`, `n`, `npv`, `irr`, `swap_xy`, `rcl_pv`, `rcl_i`,
+`rcl_n`, `rcl_mem`). Reusa `VectorsJson { ignoreUnknownKeys = true }` do
+passo 8.
+
+`value` é `Double?` (não String como no calendário): valores de cashflow
+são integers ou 2 casas decimais, todos representáveis exatamente em
+IEEE 754 — diferente de datas onde zeros à direita importam.
+
+`register` é `Int?` para `rcl_mem`. MVP suporta apenas R0..R9 (limite do
+`RegisterId` enum); R10..R20 abortam com `error()`.
+
+### `commonTest/engine/CashflowVectorsTest.kt` — 17 `@Test` (~303 linhas)
+
+Padrão idêntico aos passos 10/12/14: companion `by lazy` cache do JSON,
+17 funções `@Test cf_XXX_descricao()` cada uma de 1 linha (`runVector("cf-XXX")`),
+organizadas em 6 famílias por comentários:
+
+| Família             | Vetores | Comentário                                  |
+|---------------------|---------|---------------------------------------------|
+| Setup/RCL           | 2       | clear_reg + RCL n após build                |
+| NPV happy path      | 4       | manual p. 61 + p. 64 (grouped) + i=0 + only CFo |
+| IRR happy path      | 3       | manual p. 65 + simples 2-fluxos + multi-raiz |
+| Auto-store em pv/i  | 2       | NPV→PV, IRR→i automaticamente               |
+| Erros (Erro 7 IRR)  | 2       | sem mudança de sinal positivo/negativo      |
+| Erros (Erro 6 Nj)   | 4       | Nj > 99, < 0, não-inteiro, sem CFj antes    |
+
+`runVector(id)` motor com 2 ramos (não 3 — não há saída dupla via
+`expected_y`). `operationToEvents(vector, op)` reproduz digitação real:
+`{op:"cfo", value:-80000}` → `[Digit(8), Digit(0), Digit(0), Digit(0),
+Digit(0), ChangeSign, CashFlowZero]`.
+
+`numberToEvents(value: Double)` é equivalente ao da estatística — replicado
+por isolamento de suíte (mesmo padrão de TVM/Statistics). CHS no fim para
+valores negativos (convenção HP).
+
+## 8. Vermelhos esperados pós-passo 16
+
+**4 totais** — inalterado do passo 14:
+- 3 antigos do bloco 2: `stat-collision-sto-corrupts-stddev_legado`,
+  `stat-yhatr-001`, `stat-xhatr-001`
+- 1 do calendário (passo 14): `cal-delta-mdy-erratum`
+
+**Não há vermelho novo do bloco 4**: os 6 vetores de erro de cashflow
+**passam** porque os errors corrigidos (Erro 6 para Nj, Erro 7 para
+IRR sem sinal) batem com o esperado. O vetor `cf-irr-with-erratum-multi-root`
+**também passa** — Newton-Raphson de i=0% converge em 10.0000% conforme
+validado em Python pré-passo-15.
+
+## 9. Suíte total
+
+| Suíte                              | Casos | Δ      |
+|------------------------------------|-------|--------|
+| (estado pós passo 14, projetado)   | 273   | —      |
+| `CashflowVectorsTest` (passo 16)   | +17   | +17    |
+| **Total esperado**                 | **290** |      |
+| Verdes esperados                   | 286   |        |
+| Vermelhos documentados             | 4     |        |
+
+## 10. Débito técnico (cumulativo, inalterado)
+
+`./gradlew :shared:jvmTest` continua **não-executável** no sandbox Cowork.
+Validação por inspeção manual + reuso da validação Python do passo 15
+(NPV/IRR canônicos confirmados: 212.18, 907.77, 13.72%, 10.00%).
+
+Trace mental dos 17 vetores ponta-a-ponta:
+- **Setup**: `cf-clear-reg-001` valida Memory.ClearReg corrigido.
+  `cf-rcl-n-after-cfj-build` valida `applyCashFlowJ` incrementando n.
+- **NPV**: `cf-npv-001` valida fórmula simples; `cf-npv-002-grouped`
+  valida Nⱼ; `cf-npv-i-zero` valida caso degenerado i=0; `cf-npv-only-cfo`
+  valida `n=0 → NPV=CF₀` sem erro.
+- **IRR**: `cf-irr-001` (NR converge no terreno em ~6 iter de i=0);
+  `cf-irr-simple-2-flows` (algébrico exato); `cf-irr-with-erratum-multi-root`
+  (NR de i=0 acha raiz menor 10%).
+- **Auto-store**: `cf-npv-stores-pv` (após NPV, RCL PV = NPV);
+  `cf-irr-stores-i` (após IRR, RCL i = IRR%).
+- **Erros**: 6 vetores cobrem todos os caminhos try/catch do
+  `reduceCashflow`.
+
+Primeira ação em máquina dev:
+1. `./gradlew :shared:jvmTest` em ambiente com rede aberta.
+2. Confirmar suíte chega a **290 casos** com **286 verdes + 4 vermelhos**
+   esperados.
+3. Se vetor não-listado falhar, abrir passo 16.1.
+4. Vetores-bandeira a inspecionar primeiro: `cf-irr-001` (tolerância NR),
+   `cf-npv-002-grouped` (Nⱼ + agrupamento), `cf-clear-reg-001` (correção
+   de Memory.ClearReg), os 6 erros.
+
+## 11. Linhas tocadas
+
+| Arquivo                                       | Δ linhas | Tipo                  |
+|-----------------------------------------------|----------|-----------------------|
+| `FinancialRegisters.kt` (cashflowValues + helpers) | +71  | aditivo + 1 linha     |
+| `Hp12cError.kt` (correções Erro 6/7)          | +32/-3   | reclassificação       |
+| `Event.kt` (Recall.* + Cashflow já estava)    | +25      | aditivo               |
+| `DefaultEngine.kt` (reduceCashflow + Recall + ClearReg) | +394 | aditivo + 1 mudança |
+| `CashflowVectorJson.kt`                       | +79      | novo                  |
+| `CashflowVectorsTest.kt`                      | +303     | novo                  |
+| **Total Kotlin**                              | **~904** |                       |
+
+Bloco 4 fechado: ~990 + ~904 ≈ 1894 linhas (passo 15 + passo 16) — o
+maior bloco da Fase 2, coerente com a complexidade (Newton-Raphson +
+estado novo + 2 correções arquiteturais simultâneas). Bloco 3 (~1400),
+Bloco 2 (~1400), Bloco 1 (~1100).
+
+## 12. Próximo passo
+
+**Passo 17 — Bloco 5 (Amortização) — paperwork.** Manual `bpia5314.pdf`
+Seção 3 p. 50-58 + Apêndice D p. 195 (Erro 6 para AMORT) + Apêndice E
+p. 198-199 (fórmulas de amortização). Bloco menor: 1 tecla (`f AMORT`)
+que consome `n` em X (número de pagamentos a amortizar) e retorna juros
+totais e principal total via Y/X. Estado: usa registradores financeiros
+existentes (n, i, PV, PMT, FV) — sem campo novo. Estimativa paperwork:
+~250 linhas; código (passo 18): ~150 linhas. Total Bloco 5: ~400 linhas
+— o menor da Fase 2.
+
+Pré-requisito **bloqueante** ainda em pé: rodar `./gradlew :shared:jvmTest`
+em máquina dev e confirmar 290 casos com 286 verdes + 4 vermelhos
+esperados (estado projetado pós-passo 16). Esse gate cumula os passos
+10/12/14/16 todos pendentes de jvmTest real.

@@ -1,0 +1,107 @@
+{
+  "schema_version": "1.0",
+  "description": "Vetores para a lógica Store vs Solve das teclas TVM (n, i, PV, PMT, FV). Documentam o flag canStoreToTvm da pilha: quando true a tecla ARMAZENA X; quando false RESOLVE. Fonte: manual HP 12C Platinum, Seção 3 'Cálculos financeiros básicos', p. 39-55 (sequência de keystrokes dos exemplos).",
+  "schema_note": "Schema stateful: 'operations' é lista de {op, value?}. Ops: digit, enter, arith_div, arith_mul, store_n, store_i, store_pv, store_pmt, store_fv, solve_pv, solve_n (esperados para confirmar qual caminho foi tomado). Campo 'expect_stored' indica o registrador e o valor esperado após o Store; 'expect_solved' indica o campo esperado no resultado de um Solve.",
+  "vectors": [
+    {
+      "id": "disp-001",
+      "source": "manual, Seção 3, p. 43-44 (sequência de keystroke do exemplo de empréstimo)",
+      "description": "Digitar número e pressionar PV sem ENTER → Store.Pv. Caso mais simples: 10000 PV.",
+      "operations": [
+        { "op": "digit_sequence", "value": "10000" },
+        { "op": "press_pv" }
+      ],
+      "expect": "store",
+      "expect_pv": "10000",
+      "notes": "isEntering=true ao pressionar PV → canStoreToTvm=true → Store.Pv"
+    },
+    {
+      "id": "disp-002",
+      "source": "manual, Seção 3, p. 43 (sequência: digitar, ENTER, digitar tecla TVM)",
+      "description": "10000 ENTER PV → Store.Pv. ENTER não anula canStoreToTvm; o valor ainda é 'fresco'.",
+      "operations": [
+        { "op": "digit_sequence", "value": "10000" },
+        { "op": "enter" },
+        { "op": "press_pv" }
+      ],
+      "expect": "store",
+      "expect_pv": "10000",
+      "notes": "Bug reportado em 2026-05: após ENTER isEntering=false mas canStoreToTvm=true → Store correto"
+    },
+    {
+      "id": "disp-003",
+      "source": "manual, Seção 3, p. 43 (sequência '9 ENTER 12 ÷ i' para i mensal)",
+      "description": "9 ENTER 12 ÷ i → Store.I com valor 0.75. Aritmética produz valor fresco.",
+      "operations": [
+        { "op": "digit_sequence", "value": "9" },
+        { "op": "enter" },
+        { "op": "digit_sequence", "value": "12" },
+        { "op": "arith_div" },
+        { "op": "press_i" }
+      ],
+      "expect": "store",
+      "expect_i": "0.75",
+      "notes": "Após ÷: isEntering=false mas canStoreToTvm=true → Store.I=0.75"
+    },
+    {
+      "id": "disp-004",
+      "source": "manual, Seção 3, p. 44 (após armazenar n e i, pressionar PV sem entrada = Solve.Pv)",
+      "description": "Após store n=360 e i=0.75, pressionar PV diretamente → Solve.Pv.",
+      "operations": [
+        { "op": "digit_sequence", "value": "360" },
+        { "op": "press_n" },
+        { "op": "digit_sequence", "value": "9" },
+        { "op": "enter" },
+        { "op": "digit_sequence", "value": "12" },
+        { "op": "arith_div" },
+        { "op": "press_i" },
+        { "op": "digit_sequence", "value": "135000" },
+        { "op": "press_pv" },
+        { "op": "digit_sequence", "value": "0" },
+        { "op": "press_fv" },
+        { "op": "press_pmt" }
+      ],
+      "expect": "solve",
+      "expect_pmt": "-1347.74",
+      "format": "FIX 2",
+      "notes": "Manual p. 44: PMT = -1.347,74. Última tecla TVM sem entrada nova → Solve.Pmt"
+    },
+    {
+      "id": "disp-005",
+      "source": "comportamento HP 12C física — estado inicial",
+      "description": "Pressionar PV sem nenhuma entrada prévia (estado inicial) → Solve.Pv → 0.00.",
+      "operations": [
+        { "op": "press_pv" }
+      ],
+      "expect": "solve",
+      "expect_pv_register_unchanged": true,
+      "notes": "InitialState: canStoreToTvm=false → Solve. Com n=i=PMT=FV=0 → PV=0"
+    },
+    {
+      "id": "disp-006",
+      "source": "comportamento HP 12C física — Store então Solve imediato",
+      "description": "Após store n, pressionar PV sem nova entrada → Solve.Pv (não store).",
+      "operations": [
+        { "op": "digit_sequence", "value": "5" },
+        { "op": "press_n" },
+        { "op": "press_pv" }
+      ],
+      "expect": "solve",
+      "notes": "Após Store.N: canStoreToTvm=false → próximo PV resolve, não armazena"
+    },
+    {
+      "id": "disp-007",
+      "source": "comportamento HP 12C física — RCL depois TVM store",
+      "description": "RCL R0 seguido de n → Store.N com o valor recuperado.",
+      "operations": [
+        { "op": "digit_sequence", "value": "120" },
+        { "op": "store_r0" },
+        { "op": "rcl_r0" },
+        { "op": "press_n" }
+      ],
+      "expect": "store",
+      "expect_n": "120",
+      "notes": "RCL usa pushValue que seta canStoreToTvm=true → Store.N"
+    }
+  ]
+}

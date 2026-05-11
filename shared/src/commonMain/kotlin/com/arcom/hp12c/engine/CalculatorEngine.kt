@@ -35,6 +35,19 @@ interface CalculatorEngine {
         separator: NumericSeparator = NumericSeparator.COMMA_PERIOD,
     ): String
 
+    /**
+     * Transforma o estado em um snapshot "assentado" para persistência:
+     * - Se `entryBuffer != null` (usuário estava digitando), faz commit:
+     *   escreve o valor parseado em `stack.x` e zera `entryBuffer`/`isEntering`.
+     * - Zera `pendingError` (erros são transientes — ver §2.2 de `arquitetura/persistence.md`).
+     *
+     * O resultado satisfaz sempre `entryBuffer == null && !stack.isEntering`.
+     * A UI deve chamar este método antes de passar o estado para [StateRepository.save].
+     *
+     * Ver `arquitetura/persistence.md` §3.
+     */
+    fun normalizeForPersistence(state: CalculatorState): CalculatorState
+
     companion object {
         /** Engine default do app. Trocável para testes que queiram mockar. */
         val Default: CalculatorEngine = DefaultEngine()

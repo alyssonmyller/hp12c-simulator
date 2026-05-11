@@ -1,5 +1,7 @@
 package com.arcom.hp12c.engine.state
 
+import kotlinx.serialization.Serializable
+
 /**
  * Formato do visor: `FIX n`, `SCI n`, `ENG n` com `n` entre 0 e 9 — espelha a HP 12C Platinum.
  * Ver Seção 3.4 de `arquitetura/engine-interface.md`.
@@ -8,10 +10,11 @@ package com.arcom.hp12c.engine.state
  * na memória contínua, então na primeira execução vale `FIX 2`, depois vale o que o usuário
  * configurou por último.
  */
+@Serializable
 sealed class DisplayFormat {
-    data class Fix(val places: Int) : DisplayFormat() { init { require(places in 0..9) } }
-    data class Sci(val places: Int) : DisplayFormat() { init { require(places in 0..9) } }
-    data class Eng(val places: Int) : DisplayFormat() { init { require(places in 0..9) } }
+    @Serializable data class Fix(val places: Int) : DisplayFormat() { init { require(places in 0..9) } }
+    @Serializable data class Sci(val places: Int) : DisplayFormat() { init { require(places in 0..9) } }
+    @Serializable data class Eng(val places: Int) : DisplayFormat() { init { require(places in 0..9) } }
 
     companion object {
         val Default: DisplayFormat = Fix(2)

@@ -72,6 +72,15 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+
+    // Os recursos de teste vivem em commonTest/resources (convenção KMP). O AGP
+    // não os adiciona automaticamente ao classpath de testDebugUnitTest —
+    // precisamos declará-los explicitamente no source set "test" do Android.
+    sourceSets {
+        getByName("test") {
+            resources.srcDirs("src/commonTest/resources")
+        }
+    }
 }
 
 // Configuração de logging para qualquer task de teste JVM-like neste módulo

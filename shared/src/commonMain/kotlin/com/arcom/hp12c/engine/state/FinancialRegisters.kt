@@ -1,6 +1,8 @@
 package com.arcom.hp12c.engine.state
 
 import com.arcom.hp12c.engine.math.Hp12cDecimal
+import kotlinx.serialization.Contextual
+import kotlinx.serialization.Serializable
 
 /**
  * Os 5 registradores de TVM + o modo BEG/END. `null` = "não-inicializado pelo usuário":
@@ -10,13 +12,15 @@ import com.arcom.hp12c.engine.math.Hp12cDecimal
  * A taxa `i` é guardada em percentual (o usuário digita `4`, não `0.04`), conforme
  * convenção da HP física.
  */
+@Serializable
 data class FinancialRegisters(
-    val n:    Hp12cDecimal? = null,
-    val i:    Hp12cDecimal? = null,
-    val pv:   Hp12cDecimal? = null,
-    val pmt:  Hp12cDecimal? = null,
-    val fv:   Hp12cDecimal? = null,
-    val mode: TvmMode       = TvmMode.END,
+    @Contextual val n:    Hp12cDecimal? = null,
+    @Contextual val i:    Hp12cDecimal? = null,
+    @Contextual val pv:   Hp12cDecimal? = null,
+    @Contextual val pmt:  Hp12cDecimal? = null,
+    @Contextual val fv:   Hp12cDecimal? = null,
+    val mode: TvmMode = TvmMode.END,
 )
 
+@Serializable
 enum class TvmMode { END, BEGIN }

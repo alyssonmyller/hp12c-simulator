@@ -56,6 +56,8 @@ sealed class Hp12cError(val code: Int, val reason: String) {
     // --- Error 6 — registradores financeiros ---
     object FinancialUninit       : Hp12cError(6, "registrador financeiro não-inicializado")
     object AmortizeInvalidN      : Hp12cError(6, "AMORT requer n inteiro e i consistente")
+    object DepreciationInvalidN  : Hp12cError(6, "depreciação requer n inteiro positivo (INT(n) > 0)")
+    object DepreciationInvalidYear: Hp12cError(6, "depreciação requer ano j inteiro positivo (INT(j) > 0)")
 
     // --- Error 7 — fluxo de caixa ---
     object CashflowEmpty         : Hp12cError(7, "NPV/IRR sem CFo")

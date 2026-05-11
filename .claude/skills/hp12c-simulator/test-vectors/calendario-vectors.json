@@ -1,0 +1,292 @@
+{
+  "schema_version": "2",
+  "meta": {
+    "description": "Vetores de teste para as 4 teclas de calendário da HP 12C Platinum (g M.DY, g D.MY, g DATE, g ΔDYS). Schema stateful: cada vetor é uma sequência de 'operations' aplicadas à engine em ordem. Após a última operação, 'expected_x' e opcionalmente 'expected_y' são comparados com o estado final do display/pilha. Erros esperados usam 'error: \"Error N\"' no lugar de 'expected_x'. Para resultados de g DATE, 'format' é \"DATE\" e a string esperada inclui o dígito de dia da semana (1=segunda ... 7=domingo) — a engine renderiza via DisplayFormatter com branch específico para o formato dd,mm,yyyy d (ou mm,dd,yyyy d em M.DY).",
+    "sources": [
+      "bpia5314.pdf — Seção 2 (p. 30-33) — comportamento observável das 4 teclas",
+      "bpia5314.pdf — Apêndice D (p. 195-196) — condições de Erro 8",
+      "bpia5314.pdf — Apêndice E (p. 200) — fórmulas f(DT) e f₃₀(DT)",
+      "formulas/calendario.md §7.1 — errata documentada do exemplo p. 33 (10.152005 → deveria ser 10.142005)"
+    ],
+    "conventions": {
+      "operations": [
+        "clear_fin     — f CLEAR FIN (não toca dateFormat)",
+        "set_mdy       — g M.DY (atualiza dateFormat = M_DY)",
+        "set_dmy       — g D.MY (atualiza dateFormat = D_MY)",
+        "push_value    — empilha valor decimal (campo 'value' como string para preservar zeros à direita)",
+        "enter         — ENTER",
+        "chs           — CHS (durante entrada: negata buffer; senão: negata X)",
+        "dyse          — g ΔDYS (X ← dias exatos, Y ← dias 30/360)",
+        "date          — g DATE (X ← data + dow encoded, Y/Z/T preservados)",
+        "swap_xy       — x⇆y (acessa Y após dyse para ler dias comerciais)"
+      ],
+      "date_format_default": "Engine inicializa em M.DY. Vetores que exigem D.MY abrem com 'set_dmy' explícito.",
+      "expected_format_field": {
+        "FIX N": "Strings numéricas renderizadas via DisplayFormatter na locale PERIOD_COMMA (en-US), depois strip de vírgulas de milhar.",
+        "DATE":  "String renderizada como 'dd,mm,yyyy d' (em D.MY) ou 'mm,dd,yyyy d' (em M.DY); separador é vírgula independente do separador numérico ativo. d ∈ {1..7}, 1=segunda ... 7=domingo."
+      },
+      "errata_note": "O vetor cal-delta-mdy-erratum reproduz literalmente o que o manual imprime (10.152005) e marca como vermelho esperado — a HP física entrega 499.00 mas o livro reporta 498.00 por typo de Oct 14 → Oct 15. O vetor cal-delta-mdy-001 usa o input correto (10.142005) e confirma 498.00."
+    }
+  },
+  "vectors": [
+    {
+      "id": "cal-delta-dmy-001",
+      "source": "manual, Seção 2, p. 32 (exemplo prefacial do bloco DATE — ΔDYS é derivação)",
+      "description": "ΔDYS em D.MY: 14 mai 2004 a 11 set 2004 = 120 dias exatos (validação cruzada com cal-date-dmy-001).",
+      "operations": [
+        {"op": "clear_fin"},
+        {"op": "set_dmy"},
+        {"op": "push_value", "value": "14.052004"},
+        {"op": "enter"},
+        {"op": "push_value", "value": "11.092004"},
+        {"op": "dyse"}
+      ],
+      "query": "display",
+      "expected_x": "120.00",
+      "format": "FIX 2",
+      "notes": "Confirma f(11.09.2004) − f(14.05.2004) = 732215 − 732095 = 120 (formula de Apêndice E p. 200)."
+    },
+    {
+      "id": "cal-delta-mdy-001",
+      "source": "manual, Seção 2, p. 33 (exemplo após errata — ver §7.1 de formulas/calendario.md)",
+      "description": "ΔDYS em M.DY: 3 jun 2004 a 14 out 2005 = 498 dias exatos. Usa data corrigida (10.142005) — ver erratum vector abaixo.",
+      "operations": [
+        {"op": "clear_fin"},
+        {"op": "set_mdy"},
+        {"op": "push_value", "value": "6.032004"},
+        {"op": "enter"},
+        {"op": "push_value", "value": "10.142005"},
+        {"op": "dyse"}
+      ],
+      "query": "display",
+      "expected_x": "498.00",
+      "format": "FIX 2",
+      "notes": "Resultado do livro (498) corresponde a 14 out 2005, não 15. Manual imprime '10.152005' mas o número confere com 14 — typo do livro."
+    },
+    {
+      "id": "cal-delta-mdy-001-commercial",
+      "source": "manual, Seção 2, p. 33 (continuação — após x⇆y)",
+      "description": "Após ΔDYS, Y carrega dias comerciais (30/360) — 491. Acesso via x⇆y.",
+      "operations": [
+        {"op": "clear_fin"},
+        {"op": "set_mdy"},
+        {"op": "push_value", "value": "6.032004"},
+        {"op": "enter"},
+        {"op": "push_value", "value": "10.142005"},
+        {"op": "dyse"},
+        {"op": "swap_xy"}
+      ],
+      "query": "display",
+      "expected_x": "491.00",
+      "format": "FIX 2",
+      "notes": "Confirma f₃₀(14.10.2005) − f₃₀(3.06.2004) = 722114 − 721623 = 491 (Apêndice E p. 200, base 30/360 com regra de fim-de-mês)."
+    },
+    {
+      "id": "cal-delta-mdy-001-restore",
+      "source": "manual, Seção 2, p. 32 ('Apertando-se x⇆y a resposta original será novamente exibida no mostrador')",
+      "description": "Segundo x⇆y restaura dias exatos em X (498).",
+      "operations": [
+        {"op": "clear_fin"},
+        {"op": "set_mdy"},
+        {"op": "push_value", "value": "6.032004"},
+        {"op": "enter"},
+        {"op": "push_value", "value": "10.142005"},
+        {"op": "dyse"},
+        {"op": "swap_xy"},
+        {"op": "swap_xy"}
+      ],
+      "query": "display",
+      "expected_x": "498.00",
+      "format": "FIX 2"
+    },
+    {
+      "id": "cal-delta-mdy-erratum",
+      "source": "manual, Seção 2, p. 33 (literal — keystroke 10.152005 com typo)",
+      "description": "VERMELHO ESPERADO. Se a engine recebe literalmente '10.152005' (= 15 out 2005, M.DY), o resultado correto é 499 — não 498 como o livro imprime. Este vetor reproduz o input do livro e mostra que a engine entrega o valor matematicamente correto, divergindo do número impresso. Documentação da divergência: §7.1 de formulas/calendario.md.",
+      "operations": [
+        {"op": "clear_fin"},
+        {"op": "set_mdy"},
+        {"op": "push_value", "value": "6.032004"},
+        {"op": "enter"},
+        {"op": "push_value", "value": "10.152005"},
+        {"op": "dyse"}
+      ],
+      "query": "display",
+      "expected_x": "498.00",
+      "format": "FIX 2",
+      "notes": "Espera-se que este teste FALHE: a engine devolve '499.00' (correto), o expected_x é o valor errôneo do livro. Mantemos o vetor como prova de que a engine não 'imita o erro' do manual. Equivalente conceitual ao vermelho 'stat-yhatr-001' do bloco de estatística."
+    },
+    {
+      "id": "cal-date-dmy-001",
+      "source": "manual, Seção 2, p. 32 (exemplo canônico do bloco DATE)",
+      "description": "DATE em D.MY: 14.052004 ENTER 120 g DATE → 11,09,2004 6 (11 set 2004, sábado).",
+      "operations": [
+        {"op": "clear_fin"},
+        {"op": "set_dmy"},
+        {"op": "push_value", "value": "14.052004"},
+        {"op": "enter"},
+        {"op": "push_value", "value": "120"},
+        {"op": "date"}
+      ],
+      "query": "display",
+      "expected_x": "11,09,2004 6",
+      "format": "DATE",
+      "notes": "DOW HP: 6 = sábado. f(14.05.2004)=732095, f+120=732215, inverter → (9,11,2004); ((732215+5) mod 7)=6 ✓."
+    },
+    {
+      "id": "cal-date-mdy-001",
+      "source": "derivação — mesma data do exemplo p. 32, mas em M.DY",
+      "description": "DATE em M.DY: 5.142004 ENTER 120 g DATE → 9,11,2004 6 (mesma data, formato de saída diferente).",
+      "operations": [
+        {"op": "clear_fin"},
+        {"op": "set_mdy"},
+        {"op": "push_value", "value": "5.142004"},
+        {"op": "enter"},
+        {"op": "push_value", "value": "120"},
+        {"op": "date"}
+      ],
+      "query": "display",
+      "expected_x": "9,11,2004 6",
+      "format": "DATE",
+      "notes": "Mesma matemática que cal-date-dmy-001 — só o formato de I/O muda. Confirma que dateFormat afeta apenas parsing/rendering, não o cálculo subjacente."
+    },
+    {
+      "id": "cal-date-back-001",
+      "source": "derivação — manual p. 31 ('Se a outra data estiver no passado, aperte CHS')",
+      "description": "DATE com CHS: 11.092004 ENTER 120 CHS g DATE em D.MY → 14,05,2004 5 (14 mai 2004, sexta).",
+      "operations": [
+        {"op": "clear_fin"},
+        {"op": "set_dmy"},
+        {"op": "push_value", "value": "11.092004"},
+        {"op": "enter"},
+        {"op": "push_value", "value": "120"},
+        {"op": "chs"},
+        {"op": "date"}
+      ],
+      "query": "display",
+      "expected_x": "14,05,2004 5",
+      "format": "DATE",
+      "notes": "DOW HP: 5 = sexta. f(11.09.2004)=732215, f−120=732095, inverter → (5,14,2004); ((732095+5) mod 7)=(732100 mod 7)=5 ✓."
+    },
+    {
+      "id": "cal-date-zero-days",
+      "source": "derivação — caso de borda DATE com n=0",
+      "description": "DATE com n=0 retorna a própria data com dow embutido. Útil para 'só queremos saber o dia da semana'.",
+      "operations": [
+        {"op": "clear_fin"},
+        {"op": "set_mdy"},
+        {"op": "push_value", "value": "1.012000"},
+        {"op": "enter"},
+        {"op": "push_value", "value": "0"},
+        {"op": "date"}
+      ],
+      "query": "display",
+      "expected_x": "1,01,2000 6",
+      "format": "DATE",
+      "notes": "1 jan 2000 era sábado (= 6 em HP). f(1.01.2000)=730500; ((730500+5) mod 7)=(730505 mod 7)=6 ✓."
+    },
+    {
+      "id": "cal-leap-feb29-2004",
+      "source": "derivação — bissexto gregoriano",
+      "description": "29 fev 2004 a 1 mar 2004 = 1 dia. Valida que 29-fev é aceito em 2004 (bissexto) e que f(DT) trata o limiar fev/mar consistentemente.",
+      "operations": [
+        {"op": "clear_fin"},
+        {"op": "set_mdy"},
+        {"op": "push_value", "value": "2.292004"},
+        {"op": "enter"},
+        {"op": "push_value", "value": "3.012004"},
+        {"op": "dyse"}
+      ],
+      "query": "display",
+      "expected_x": "1.00",
+      "format": "FIX 2",
+      "notes": "f(29.02.2004)=732020 (via mm≤2, z=2003), f(1.03.2004)=732021 (via mm>2, x=3, z=2004); Δ=1 ✓."
+    },
+    {
+      "id": "cal-date-format-survives-clear-fin",
+      "source": "manual, Seção 2, p. 31 ('O formato de data permanece ativo até ser alterado')",
+      "description": "f CLEAR FIN não devolve dateFormat para M.DY. Após set_dmy + clear_fin + dyse, parsing continua em D.MY.",
+      "operations": [
+        {"op": "set_dmy"},
+        {"op": "clear_fin"},
+        {"op": "push_value", "value": "14.052004"},
+        {"op": "enter"},
+        {"op": "push_value", "value": "11.092004"},
+        {"op": "dyse"}
+      ],
+      "query": "display",
+      "expected_x": "120.00",
+      "format": "FIX 2",
+      "notes": "Se clear_fin tivesse resetado o flag, '14.052004' seria interpretado como (mm=14...) → Erro 8. Aceitar 120.00 confirma que o flag persistiu."
+    },
+    {
+      "id": "cal-error-invalid-month",
+      "source": "Apêndice D, p. 195 ('A data está no formato errado ou não existe')",
+      "description": "ΔDYS com mês inválido (mm=13) em M.DY → Erro 8.",
+      "operations": [
+        {"op": "clear_fin"},
+        {"op": "set_mdy"},
+        {"op": "push_value", "value": "13.012004"},
+        {"op": "enter"},
+        {"op": "push_value", "value": "1.012005"},
+        {"op": "dyse"}
+      ],
+      "query": "display",
+      "error": "Error 8",
+      "format": "ERROR",
+      "notes": "Validação de mm ∈ [1,12] dispara Hp12cError.InvalidDate."
+    },
+    {
+      "id": "cal-error-feb29-non-leap",
+      "source": "Apêndice D, p. 195 ('A data não existe' — caso 29-fev em ano não-bissexto)",
+      "description": "ΔDYS com 29 fev 2003 (não bissexto) → Erro 8.",
+      "operations": [
+        {"op": "clear_fin"},
+        {"op": "set_mdy"},
+        {"op": "push_value", "value": "2.292003"},
+        {"op": "enter"},
+        {"op": "push_value", "value": "3.012003"},
+        {"op": "dyse"}
+      ],
+      "query": "display",
+      "error": "Error 8",
+      "format": "ERROR",
+      "notes": "2003 não é bissexto (não divisível por 4). daysInMonth(2, 2003) = 28; dd=29 inválido. Caso de fronteira da regra gregoriana de bissexto."
+    },
+    {
+      "id": "cal-error-overflow-future",
+      "source": "Apêndice D, p. 195 ('Quando se tenta adicionar dias além da capacidade de datas da calculadora')",
+      "description": "DATE que ultrapassaria 25 nov 4046 → Erro 8.",
+      "operations": [
+        {"op": "clear_fin"},
+        {"op": "set_mdy"},
+        {"op": "push_value", "value": "1.014046"},
+        {"op": "enter"},
+        {"op": "push_value", "value": "365"},
+        {"op": "date"}
+      ],
+      "query": "display",
+      "error": "Error 8",
+      "format": "ERROR",
+      "notes": "1 jan 4046 + 365 dias = 1 jan 4047, fora do limite. Hp12cError.DateOutOfRange."
+    },
+    {
+      "id": "cal-error-underflow-past",
+      "source": "derivação — limite inferior 15 out 1582 (manual p. 30)",
+      "description": "DATE com CHS que cairia antes de 15 out 1582 → Erro 8.",
+      "operations": [
+        {"op": "clear_fin"},
+        {"op": "set_mdy"},
+        {"op": "push_value", "value": "10.151582"},
+        {"op": "enter"},
+        {"op": "push_value", "value": "1"},
+        {"op": "chs"},
+        {"op": "date"}
+      ],
+      "query": "display",
+      "error": "Error 8",
+      "format": "ERROR",
+      "notes": "15 out 1582 − 1 dia = 14 out 1582, fora do range válido (limite gregoriano histórico). Hp12cError.DateOutOfRange."
+    }
+  ]
+}

@@ -55,7 +55,7 @@ internal fun Stack.drop(): Stack =
  */
 fun Stack.acceptNewNumber(newX: Hp12cDecimal): Stack {
     val rebuilt = if (stackLiftEnabled) lift(newX) else copy(x = newX)
-    return rebuilt.copy(stackLiftEnabled = true, isEntering = true)
+    return rebuilt.copy(stackLiftEnabled = true, isEntering = true, canStoreToTvm = true)
 }
 
 /**
@@ -63,7 +63,7 @@ fun Stack.acceptNewNumber(newX: Hp12cDecimal): Stack {
  * digitação sobrescreve X em vez de empurrar). Encerra a digitação em curso.
  */
 fun Stack.clx(): Stack =
-    copy(x = Hp12cDecimal.ZERO, stackLiftEnabled = false, isEntering = false)
+    copy(x = Hp12cDecimal.ZERO, stackLiftEnabled = false, isEntering = false, canStoreToTvm = true)
 
 /**
  * Empurra um valor "externo" (resultado de `RCL`, `Solve.Fv`, etc.) para X, respeitando
@@ -73,7 +73,7 @@ fun Stack.clx(): Stack =
  */
 fun Stack.pushValue(value: Hp12cDecimal): Stack {
     val rebuilt = if (stackLiftEnabled) lift(value) else copy(x = value)
-    return rebuilt.copy(stackLiftEnabled = true, isEntering = false)
+    return rebuilt.copy(stackLiftEnabled = true, isEntering = false, canStoreToTvm = true)
 }
 
 // ─── ENTER ─────────────────────────────────────────────────────────────────────
@@ -88,7 +88,7 @@ fun Stack.pushValue(value: Hp12cDecimal): Stack {
  * ```
  */
 fun Stack.enter(): Stack =
-    copy(t = z, z = y, y = x, stackLiftEnabled = false, isEntering = false)
+    copy(t = z, z = y, y = x, stackLiftEnabled = false, isEntering = false, canStoreToTvm = true)
 
 // ─── Operações de pilha sem "consumo" ──────────────────────────────────────────
 
@@ -101,7 +101,7 @@ fun Stack.enter(): Stack =
  * ```
  */
 fun Stack.rollDown(): Stack =
-    copy(x = y, y = z, z = t, t = x, stackLiftEnabled = true, isEntering = false)
+    copy(x = y, y = z, z = t, t = x, stackLiftEnabled = true, isEntering = false, canStoreToTvm = true)
 
 /**
  * `R↑` — rotação circular para cima dos 4 níveis. T→X, Z→T, Y→Z, X→Y.
@@ -112,13 +112,13 @@ fun Stack.rollDown(): Stack =
  * ```
  */
 fun Stack.rollUp(): Stack =
-    copy(x = t, y = x, z = y, t = z, stackLiftEnabled = true, isEntering = false)
+    copy(x = t, y = x, z = y, t = z, stackLiftEnabled = true, isEntering = false, canStoreToTvm = true)
 
 /**
  * `x⇆y` — troca X e Y. Z e T intactos.
  */
 fun Stack.swapXY(): Stack =
-    copy(x = y, y = x, stackLiftEnabled = true, isEntering = false)
+    copy(x = y, y = x, stackLiftEnabled = true, isEntering = false, canStoreToTvm = true)
 
 /**
  * `LSTx` — eleva a pilha e coloca `lastX` em X. O próprio `lastX` **não** muda.
@@ -126,7 +126,7 @@ fun Stack.swapXY(): Stack =
  * Útil para desfazer o último operando destruído por uma op binária/unária.
  */
 fun Stack.lstx(): Stack =
-    lift(lastX).copy(stackLiftEnabled = true, isEntering = false)
+    lift(lastX).copy(stackLiftEnabled = true, isEntering = false, canStoreToTvm = true)
 
 // ─── Operações aritméticas (binárias, unárias, percent) ────────────────────────
 
@@ -146,6 +146,7 @@ fun Stack.binaryOp(f: (y: Hp12cDecimal, x: Hp12cDecimal) -> Hp12cDecimal): Stack
         lastX = xOld,
         stackLiftEnabled = true,
         isEntering = false,
+        canStoreToTvm = true,
     )
 }
 
@@ -163,6 +164,29 @@ fun Stack.unaryOp(f: (Hp12cDecimal) -> Hp12cDecimal): Stack {
         lastX = xOld,
         stackLiftEnabled = true,
         isEntering = false,
+        canStoreToTvm = true,
+    )
+}
+
+/**
+ * Operação de "saída dupla" das teclas estatísticas (`g x̄`, `g s`, `g ŷ,r`, `g x̂,r`).
+ * Escreve dois novos valores diretamente em X e Y **sem descer Z/T** — diferente de
+ * push ou binaryOp, que movem a pilha. Z e T ficam exatamente como estavam.
+ *
+ * `lastX` ← X antigo, `stackLiftEnabled = true`.
+ *
+ * Fonte: `formulas/estatistica.md` §7, observação 1.
+ */
+fun Stack.dualOutputOp(f: (stack: Stack) -> Pair<Hp12cDecimal, Hp12cDecimal>): Stack {
+    val xOld = x
+    val (newX, newY) = f(this)
+    return copy(
+        x = newX,
+        y = newY,
+        lastX = xOld,
+        stackLiftEnabled = true,
+        isEntering = false,
+        canStoreToTvm = true,
     )
 }
 
@@ -179,5 +203,6 @@ fun Stack.percentOp(f: (y: Hp12cDecimal, x: Hp12cDecimal) -> Hp12cDecimal): Stac
         lastX = xOld,
         stackLiftEnabled = true,
         isEntering = false,
+        canStoreToTvm = true,
     )
 }

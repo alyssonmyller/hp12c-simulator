@@ -1,0 +1,169 @@
+{
+  "schema_version": "1.0",
+  "description": "Vetores de teste para DATE (f DATE) e DYS (f DYS) — manual HP 12C Platinum Secao 9, p. 106-113. Schema: op='date'|'dys', mode='MDY'|'DMY', date/date1/date2 como strings HP (ex: '6.301994'), days como inteiro para DATE. Resultado em expected_x; expected_y opcional (dia-da-semana em DATE, data-posterior em DYS).",
+  "vectors": [
+
+    {
+      "id": "cal-date-001",
+      "source": "manual, Secao 9, p. 107, Exemplo 1",
+      "description": "90 dias apos 30/06/1994 (M.DY) = 28/09/1994, quarta-feira",
+      "op": "date",
+      "mode": "MDY",
+      "date": "6.301994",
+      "days": 90,
+      "expected_x": "9.281994",
+      "expected_y": "3.000000",
+      "format": "FIX 6",
+      "notes": "JDN(30jun1994)=2449534, +90=2449624=28set1994. JDN mod7=2 -> HP code 3=quarta."
+    },
+
+    {
+      "id": "cal-date-002",
+      "source": "manual, Secao 9, p. 107 — derivado (dias negativos)",
+      "description": "-90 dias de 28/09/1994 (M.DY) = 30/06/1994, quinta-feira",
+      "op": "date",
+      "mode": "MDY",
+      "date": "9.281994",
+      "days": -90,
+      "expected_x": "6.301994",
+      "expected_y": "4.000000",
+      "format": "FIX 6",
+      "notes": "JDN(28set1994)=2449624, -90=2449534=30jun1994. JDN mod7=3 -> HP code 4=quinta."
+    },
+
+    {
+      "id": "cal-date-003",
+      "source": "borda — atravessar 29/fev/2000 (ano bissexto)",
+      "description": "1 dia apos 28/02/2000 (M.DY) = 29/02/2000, terca-feira",
+      "op": "date",
+      "mode": "MDY",
+      "date": "2.282000",
+      "days": 1,
+      "expected_x": "2.292000",
+      "expected_y": "2.000000",
+      "format": "FIX 6",
+      "notes": "2000 e bissexto (divisivel por 400). JDN(29fev2000)=2451604, mod7=1 -> HP code 2=terca."
+    },
+
+    {
+      "id": "cal-date-004",
+      "source": "borda — 29/fev/2000 para 01/mar/2000",
+      "description": "1 dia apos 29/02/2000 (M.DY) = 01/03/2000, quarta-feira",
+      "op": "date",
+      "mode": "MDY",
+      "date": "2.292000",
+      "days": 1,
+      "expected_x": "3.012000",
+      "expected_y": "3.000000",
+      "format": "FIX 6",
+      "notes": "JDN(01mar2000)=2451605, mod7=2 -> HP code 3=quarta."
+    },
+
+    {
+      "id": "cal-date-005",
+      "source": "borda — 28/fev/2001 (ano nao-bissexto) para 01/mar/2001",
+      "description": "1 dia apos 28/02/2001 (M.DY) = 01/03/2001, quinta-feira (pula 29/fev)",
+      "op": "date",
+      "mode": "MDY",
+      "date": "2.282001",
+      "days": 1,
+      "expected_x": "3.012001",
+      "expected_y": "4.000000",
+      "format": "FIX 6",
+      "notes": "2001 nao e bissexto — fev tem 28 dias. JDN(01mar2001)=2451970, mod7=3 -> HP code 4=quinta."
+    },
+
+    {
+      "id": "cal-date-006",
+      "source": "manual, Secao 9, p. 107, Exemplo 1 — modo D.MY",
+      "description": "90 dias apos 30/06/1994 em modo D.MY = 28/09/1994",
+      "op": "date",
+      "mode": "DMY",
+      "date": "30.061994",
+      "days": 90,
+      "expected_x": "28.091994",
+      "expected_y": "3.000000",
+      "format": "FIX 6",
+      "notes": "Mesmo calculo de cal-date-001 mas em modo D.MY. Entrada 30.061994, saida 28.091994."
+    },
+
+    {
+      "id": "cal-dys-001",
+      "source": "manual, Secao 9, p. 108, Exemplo 2",
+      "description": "Dias entre 30/06/1994 e 28/09/1994 (M.DY) = 90",
+      "op": "dys",
+      "mode": "MDY",
+      "date1": "6.301994",
+      "date2": "9.281994",
+      "expected_x": "90.00",
+      "format": "FIX 2",
+      "notes": "JDN(28set1994) - JDN(30jun1994) = 2449624 - 2449534 = 90."
+    },
+
+    {
+      "id": "cal-dys-002",
+      "source": "borda — span de ano bissexto",
+      "description": "Dias entre 01/01/2000 e 01/01/2001 (M.DY) = 366 (2000 e bissexto)",
+      "op": "dys",
+      "mode": "MDY",
+      "date1": "1.012000",
+      "date2": "1.012001",
+      "expected_x": "366.00",
+      "format": "FIX 2",
+      "notes": "2000 e bissexto: fev tem 29 dias. JDN(01jan2001) - JDN(01jan2000) = 2451911 - 2451545 = 366."
+    },
+
+    {
+      "id": "cal-dys-003",
+      "source": "borda — ano nao-bissexto",
+      "description": "Dias entre 01/01/2001 e 01/01/2002 (M.DY) = 365 (2001 nao-bissexto)",
+      "op": "dys",
+      "mode": "MDY",
+      "date1": "1.012001",
+      "date2": "1.012002",
+      "expected_x": "365.00",
+      "format": "FIX 2",
+      "notes": "JDN(01jan2002) - JDN(01jan2001) = 2452276 - 2451911 = 365."
+    },
+
+    {
+      "id": "cal-dys-004",
+      "source": "borda — mesma data",
+      "description": "Dias entre 28/09/1994 e 28/09/1994 = 0",
+      "op": "dys",
+      "mode": "MDY",
+      "date1": "9.281994",
+      "date2": "9.281994",
+      "expected_x": "0.00",
+      "format": "FIX 2",
+      "notes": "Datas identicas: diferenca = 0 sem erro."
+    },
+
+    {
+      "id": "cal-error-001",
+      "source": "manual, Apendice D, p. 197 — Error 8",
+      "description": "Data invalida: 30 de fevereiro de 1994",
+      "op": "date",
+      "mode": "MDY",
+      "date": "2.301994",
+      "days": 0,
+      "error": "Error 8",
+      "format": "FIX 6",
+      "notes": "Fevereiro so tem 28 ou 29 dias. Dia 30 e invalido -> Error 8 ao decodificar."
+    },
+
+    {
+      "id": "cal-error-002",
+      "source": "manual, Apendice D, p. 197 — Error 8",
+      "description": "Data invalida: 29 de fevereiro de 2001 (ano nao-bissexto)",
+      "op": "date",
+      "mode": "MDY",
+      "date": "2.292001",
+      "days": 0,
+      "error": "Error 8",
+      "format": "FIX 6",
+      "notes": "2001 nao e bissexto (2001/4=500 rem1). Feb 29 de 2001 nao existe -> Error 8."
+    }
+
+  ]
+}

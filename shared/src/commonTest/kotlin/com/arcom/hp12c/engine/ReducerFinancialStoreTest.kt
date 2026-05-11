@@ -95,8 +95,9 @@ class ReducerFinancialStoreTest {
 
     @Test fun store_n_preserva_pilha_REGRA_7() {
         // Regra 7 de stack-behavior.md Seção 5 aplicada a registradores financeiros: STO,
-        // em qualquer variante, não toca na pilha. Montamos pilha estável (1, 2, 3, 4) e
-        // comparamos imediatamente antes e depois do STO N.
+        // em qualquer variante, não toca os registradores numéricos da pilha (X/Y/Z/T/lastX
+        // e flags stackLiftEnabled/isEntering). Apenas canStoreToTvm muda para false —
+        // intencionalmente, para que o próximo toque em n/i/PV/PMT/FV sem nova entrada resolva.
         val antes = run(
             *number("1").toTypedArray(), Event.StackOp.Enter,
             *number("2").toTypedArray(), Event.StackOp.Enter,
@@ -104,7 +105,10 @@ class ReducerFinancialStoreTest {
             *number("4").toTypedArray(), Event.StackOp.Enter,
         )
         val depois = engine.reduce(antes, Event.Financial.Store.N)
-        assertEquals(antes.stack, depois.stack, "Store financeiro não toca pilha (regra 7)")
+        // canStoreToTvm é zerado pelo Store (comportamento correto); os demais campos da pilha
+        // permanecem idênticos.
+        assertEquals(antes.stack.copy(canStoreToTvm = false), depois.stack,
+            "Store financeiro não toca pilha (regra 7), só canStoreToTvm é zerado")
         assertEquals(d(4), depois.financial.n, "N recebeu o X atual")
     }
 
@@ -116,7 +120,7 @@ class ReducerFinancialStoreTest {
             *number("40").toTypedArray(), Event.StackOp.Enter,
         )
         val depois = engine.reduce(antes, Event.Financial.Store.I)
-        assertEquals(antes.stack, depois.stack)
+        assertEquals(antes.stack.copy(canStoreToTvm = false), depois.stack)
         assertEquals(d(40), depois.financial.i)
     }
 
@@ -128,7 +132,7 @@ class ReducerFinancialStoreTest {
             *number("-5000").toTypedArray(), Event.StackOp.Enter,
         )
         val depois = engine.reduce(antes, Event.Financial.Store.Pv)
-        assertEquals(antes.stack, depois.stack)
+        assertEquals(antes.stack.copy(canStoreToTvm = false), depois.stack)
         assertEquals(d(-5000), depois.financial.pv)
     }
 

@@ -1,0 +1,220 @@
+{
+  "schema_version": 1,
+  "description": "Vetores de teste para a Fase 3 — Programação keystroke da HP 12C Platinum.",
+  "vectors": [
+
+    {
+      "id": "prog-001",
+      "source": "manual, Seção 11, p. 105 — programa simples: dobra o valor em X",
+      "description": "Grava programa [2 ×] com RTN, alimenta X=5, executa → X=10.",
+      "operations": [
+        { "op": "enter_prgm" },
+        { "op": "clear_program" },
+        { "op": "digit", "value": 2 },
+        { "op": "multiply" },
+        { "op": "return" },
+        { "op": "exit_prgm" },
+        { "op": "push_x", "value": 5 },
+        { "op": "run_stop" }
+      ],
+      "expected_x": "10",
+      "format": "FIX 2",
+      "notes": "O programa mais simples possível: um único operando + operador binário."
+    },
+
+    {
+      "id": "prog-002",
+      "source": "manual, Seção 11, p. 106 — programa com dois passos aritméticos",
+      "description": "Programa [3 +] com RTN. X=7 → 10.",
+      "operations": [
+        { "op": "enter_prgm" },
+        { "op": "clear_program" },
+        { "op": "digit", "value": 3 },
+        { "op": "add" },
+        { "op": "return" },
+        { "op": "exit_prgm" },
+        { "op": "push_x", "value": 7 },
+        { "op": "run_stop" }
+      ],
+      "expected_x": "10",
+      "format": "FIX 2"
+    },
+
+    {
+      "id": "prog-003",
+      "source": "manual, Seção 12, p. 127 — loop com GTO",
+      "description": "Programa que soma 1 ao X em loop com GTO 000 (executa 3 iterações antes do limite → verificado por contagem).",
+      "notes": "Este vetor não testa loop infinito — testa apenas que GTO funciona. O teste Kotlin controla o número de iterações via SST.",
+      "skip": true
+    },
+
+    {
+      "id": "prog-004",
+      "source": "manual, Seção 12, p. 126 — condicional x=0?",
+      "description": "Programa: g x=0? → RTN → [NEG] → RTN. X=0 → 0 (pula NEG). X=5 → -5 (executa NEG).",
+      "operations": [
+        { "op": "enter_prgm" },
+        { "op": "clear_program" },
+        { "op": "cond_x_eq_zero" },
+        { "op": "return" },
+        { "op": "negate" },
+        { "op": "return" },
+        { "op": "exit_prgm" }
+      ],
+      "cases": [
+        { "push_x": 0,  "expected_x": "0.00",  "description": "x=0 → TRUE → pula NEG → X=0" },
+        { "push_x": 5,  "expected_x": "-5.00", "description": "x=5 → FALSE → executa NEG → X=-5" },
+        { "push_x": -3, "expected_x": "3.00",  "description": "x=-3 → FALSE → executa NEG → X=3" }
+      ],
+      "format": "FIX 2"
+    },
+
+    {
+      "id": "prog-005",
+      "source": "manual, Seção 12, p. 127 — condicional x≤0?",
+      "description": "Programa: g x≤0? → RTN → [NEG] → RTN. Retorna |x| (valor absoluto).",
+      "operations": [
+        { "op": "enter_prgm" },
+        { "op": "clear_program" },
+        { "op": "cond_x_leq_zero" },
+        { "op": "negate" },
+        { "op": "return" },
+        { "op": "exit_prgm" }
+      ],
+      "cases": [
+        { "push_x":  3, "expected_x":  "3.00", "description": "x=3  → FALSE (x>0) → NEG executado? NÃO" },
+        { "push_x": -4, "expected_x":  "4.00", "description": "x=-4 → TRUE  (x≤0) → pula NEG → X=-4? NÃO — segue para NEG" }
+      ],
+      "notes": "Cuidado: x≤0? TRUE = pula próximo; para |x| real usar dois desvios.",
+      "format": "FIX 2",
+      "skip": true
+    },
+
+    {
+      "id": "prog-006",
+      "source": "manual, Seção 13, p. 132 — GSB / RTN",
+      "description": "Subrotina LBL A: dobra X. Programa principal: GSB A, + 1, RTN.",
+      "operations": [
+        { "op": "enter_prgm" },
+        { "op": "clear_program" },
+        { "op": "gosub_line", "value": 4 },
+        { "op": "digit", "value": 1 },
+        { "op": "add" },
+        { "op": "return" },
+        { "op": "label_alpha", "value": "A" },
+        { "op": "digit", "value": 2 },
+        { "op": "multiply" },
+        { "op": "return" },
+        { "op": "exit_prgm" },
+        { "op": "push_x", "value": 5 },
+        { "op": "run_stop" }
+      ],
+      "expected_x": "11",
+      "format": "FIX 2",
+      "notes": "5 → GSB 4 (dobra: 10) → +1 → 11. Testa GSB+RTN aninhado."
+    },
+
+    {
+      "id": "prog-007",
+      "source": "manual, Seção 11, p. 110 — ENTER + operação binária como passos",
+      "description": "Programa: ENTER 3 × → (x × 3, y=x). X=4 → 12.",
+      "operations": [
+        { "op": "enter_prgm" },
+        { "op": "clear_program" },
+        { "op": "enter" },
+        { "op": "digit", "value": 3 },
+        { "op": "multiply" },
+        { "op": "return" },
+        { "op": "exit_prgm" },
+        { "op": "push_x", "value": 4 },
+        { "op": "run_stop" }
+      ],
+      "expected_x": "12",
+      "format": "FIX 2"
+    },
+
+    {
+      "id": "prog-008",
+      "source": "manual, Seção 11 — verificar programState após execução",
+      "description": "Após execução, programState deve ser Idle (não Running).",
+      "operations": [
+        { "op": "enter_prgm" },
+        { "op": "clear_program" },
+        { "op": "digit", "value": 1 },
+        { "op": "add" },
+        { "op": "return" },
+        { "op": "exit_prgm" },
+        { "op": "push_x", "value": 9 },
+        { "op": "run_stop" }
+      ],
+      "expected_x": "10",
+      "expected_program_idle": true,
+      "format": "FIX 2"
+    },
+
+    {
+      "id": "prog-009",
+      "source": "manual, Seção 11 — cursor avança ao gravar passos",
+      "description": "Após gravar 3 passos em PRGM, cursor deve estar em 3.",
+      "operations": [
+        { "op": "enter_prgm" },
+        { "op": "clear_program" },
+        { "op": "digit", "value": 1 },
+        { "op": "digit", "value": 2 },
+        { "op": "add" }
+      ],
+      "expected_cursor": 3,
+      "format": "FIX 2"
+    },
+
+    {
+      "id": "prog-010",
+      "source": "manual, Seção 11 — BST recua cursor",
+      "description": "Grava 2 passos, BST → cursor em 1.",
+      "operations": [
+        { "op": "enter_prgm" },
+        { "op": "clear_program" },
+        { "op": "digit", "value": 5 },
+        { "op": "multiply" },
+        { "op": "back_step" }
+      ],
+      "expected_cursor": 1,
+      "format": "FIX 2"
+    },
+
+    {
+      "id": "prog-011",
+      "source": "manual, Seção 11 — f CLEAR PRGM apaga programa",
+      "description": "Grava 3 passos, f CLEAR PRGM → programa vazio.",
+      "operations": [
+        { "op": "enter_prgm" },
+        { "op": "digit", "value": 3 },
+        { "op": "multiply" },
+        { "op": "add" },
+        { "op": "clear_program" }
+      ],
+      "expected_steps": 0,
+      "expected_cursor": 0,
+      "format": "FIX 2"
+    },
+
+    {
+      "id": "prog-012",
+      "source": "arquitetura/programacao.md §11.2 — RTN com return-stack vazio para execução",
+      "description": "Programa: [+1] com RTN explícito no final. Termina normalmente.",
+      "operations": [
+        { "op": "enter_prgm" },
+        { "op": "clear_program" },
+        { "op": "digit", "value": 1 },
+        { "op": "add" },
+        { "op": "return" },
+        { "op": "exit_prgm" },
+        { "op": "push_x", "value": 41 },
+        { "op": "run_stop" }
+      ],
+      "expected_x": "42",
+      "format": "FIX 2"
+    }
+
+  ]
+}

@@ -1,6 +1,8 @@
 package com.arcom.hp12c.engine.state
 
 import com.arcom.hp12c.engine.math.Hp12cDecimal
+import kotlinx.serialization.Contextual
+import kotlinx.serialization.Serializable
 
 /**
  * Pilha RPN de 4 níveis da HP 12C (X, Y, Z, T) + registrador `LAST X`, conforme
@@ -12,16 +14,31 @@ import com.arcom.hp12c.engine.math.Hp12cDecimal
  *
  * Ver Seção 3.1 do `arquitetura/engine-interface.md`.
  */
+@Serializable
 data class Stack(
-    val x:     Hp12cDecimal = Hp12cDecimal.ZERO,
-    val y:     Hp12cDecimal = Hp12cDecimal.ZERO,
-    val z:     Hp12cDecimal = Hp12cDecimal.ZERO,
-    val t:     Hp12cDecimal = Hp12cDecimal.ZERO,
-    val lastX: Hp12cDecimal = Hp12cDecimal.ZERO,
+    @Contextual val x:     Hp12cDecimal = Hp12cDecimal.ZERO,
+    @Contextual val y:     Hp12cDecimal = Hp12cDecimal.ZERO,
+    @Contextual val z:     Hp12cDecimal = Hp12cDecimal.ZERO,
+    @Contextual val t:     Hp12cDecimal = Hp12cDecimal.ZERO,
+    @Contextual val lastX: Hp12cDecimal = Hp12cDecimal.ZERO,
 
     /** `true` = próxima entrada de dígito levanta a pilha. Reset por CLx, ENTER, Σ+. */
     val stackLiftEnabled: Boolean = true,
 
-    /** `true` enquanto o usuário está digitando um número. Afeta CHS, ENTER e as teclas financeiras. */
+    /** `true` enquanto o usuário está digitando um número. Afeta CHS e digitação de dígitos. */
     val isEntering: Boolean = false,
+
+    /**
+     * `true` quando X contém um valor "fresco" que deve ser ARMAZENADO por uma tecla TVM
+     * (n, i, PV, PMT, FV). Segue a semântica da HP 12C física:
+     *
+     * - Setado por: digitação de dígito, ENTER, resultado de operação aritmética/unária/percent,
+     *   RCL, LSTx, CLx, R↓, R↑, x⇆y, estatística.
+     * - Zerado por: TVM Store (após armazenar), TVM Solve (após calcular), CLR FIN,
+     *   InitialState.
+     *
+     * Sem este flag, `9 ENTER 12 ÷ i` acionaria **Solve.I** (incorreto) em vez de **Store.I**
+     * (0.75 → i), porque `isEntering` já é `false` após o `÷`.
+     */
+    val canStoreToTvm: Boolean = false,
 )

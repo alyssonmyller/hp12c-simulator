@@ -1,0 +1,325 @@
+{
+  "schema_version": "2",
+  "meta": {
+    "description": "Vetores de teste para as 5 teclas de fluxo de caixa da HP 12C Platinum (g CFo, g CFj, g Nj, f NPV, f IRR). Schema stateful idêntico ao de estatistica/calendario: cada vetor é uma sequência de 'operations' aplicadas em ordem. 'expected_x' é a string formatada do display após a última operação; vetores de erro usam 'error: \"Error N\"' no lugar de 'expected_x'. Convenção de sinais HP rigorosa: investimento (saída) é negativo, retorno (entrada) é positivo.",
+    "sources": [
+      "bpia5314.pdf — Seção 4 (p. 59-67) — comportamento observável das 5 teclas",
+      "bpia5314.pdf — Apêndice C (p. 191-192) — algoritmo IRR com 4 casos (Caso 1-4)",
+      "bpia5314.pdf — Apêndice D (p. 194-195) — Erros 3, 6, 7 para cashflow/IRR",
+      "bpia5314.pdf — Apêndice E (p. 199) — fórmulas fechadas NPV e IRR",
+      "formulas/cashflow.md §10 — 7 ambiguidades catalogadas (incluindo §10.4 discrepância Erro 6 vs Erro 7 com Hp12cError.kt da Fase 1)"
+    ],
+    "conventions": {
+      "operations": [
+        "clear_reg          — f CLEAR REG (zera financeiros + R0..R9 + cashflow)",
+        "cfo {value}        — digita value, [CHS implícito se negativo], g CFo",
+        "cfj {value}        — digita value, [CHS implícito se negativo], g CFj",
+        "nj {value}         — digita value, g Nj",
+        "i {value}          — digita value, i (Financial.Store.I)",
+        "n {value}          — digita value, n (Financial.Store.N) — uso ocasional p/ resetar",
+        "npv                — f NPV",
+        "irr                — f IRR",
+        "swap_xy            — x⇆y",
+        "rcl_pv             — RCL PV (Event.Financial.Recall.Pv — adicionado no passo 16)",
+        "rcl_i              — RCL i",
+        "rcl_n              — RCL n (mostra contador de cashflow)",
+        "rcl_mem {register} — RCL R{register} (0..20) — confirma valor armazenado"
+      ],
+      "value_format": "Double; cashflows tipicamente inteiros ou 2 casas decimais — todos exatamente representáveis em IEEE 754 nesse range. Comparação final é STRING (canonical en-US sem milhar) — não há ruído de ponto flutuante no caminho.",
+      "error_codes": "Erro 6 = registradores (input limits, n>20, Nj inválido); Erro 3 = IRR não convergiu; Erro 7 = IRR sem solução possível (sem mudança de sinal). VER §8 e §10.4 de formulas/cashflow.md — discrepância com Hp12cError.kt atual (que mapeia tudo para Erro 7) será corrigida no passo 16.",
+      "irr_convergence": "Tolerância da engine: |NPV(i)| < 10⁻⁸ AND |Δi| < 10⁻⁸; máx 100 iterações. Estimativa inicial i₀ = 0%, fallback chain {0, 10, -50, 100}%."
+    }
+  },
+  "vectors": [
+    {
+      "id": "cf-clear-reg-001",
+      "source": "manual, Seção 4, p. 61 (passo 1 da sequência canônica)",
+      "description": "f CLEAR REG zera tudo (financeiros + R0..R9 + cashflow); RCL n devolve 0.",
+      "operations": [
+        {"op": "cfo", "value": 12345},
+        {"op": "cfj", "value": 100},
+        {"op": "cfj", "value": 200},
+        {"op": "clear_reg"},
+        {"op": "rcl_n"}
+      ],
+      "query": "display",
+      "expected_x": "0.00",
+      "format": "FIX 2",
+      "notes": "Confirma que CLEAR REG zera o contador de cashflow (parte do MemoryRegisters/FinancialRegisters compartilhado). Valida invariante §11.6 da formula doc."
+    },
+    {
+      "id": "cf-rcl-n-after-cfj-build",
+      "source": "manual, Seção 4, p. 62 (após '5 fluxos armazenados')",
+      "description": "Após CFo + 5x CFj, RCL n devolve 5 (manual p. 62: 'RCL n  5,00  Exibe o número de fluxos de caixa armazenados').",
+      "operations": [
+        {"op": "clear_reg"},
+        {"op": "cfo", "value": -80000},
+        {"op": "cfj", "value": -500},
+        {"op": "cfj", "value": 4500},
+        {"op": "cfj", "value": 5500},
+        {"op": "cfj", "value": 4500},
+        {"op": "cfj", "value": 130000},
+        {"op": "rcl_n"}
+      ],
+      "query": "display",
+      "expected_x": "5.00",
+      "format": "FIX 2"
+    },
+    {
+      "id": "cf-npv-001",
+      "source": "manual, Seção 4, p. 61-62 (exemplo da casa geminada — 5 fluxos sem agrupamento)",
+      "description": "NPV de investimento R$80k em casa, vendido por R$130k em 5 anos com fluxos -500/+4500/+5500/+4500 nos anos intermediários. Taxa 13%. NPV = 212.18 (positivo → investimento atrativo).",
+      "operations": [
+        {"op": "clear_reg"},
+        {"op": "cfo", "value": -80000},
+        {"op": "cfj", "value": -500},
+        {"op": "cfj", "value": 4500},
+        {"op": "cfj", "value": 5500},
+        {"op": "cfj", "value": 4500},
+        {"op": "cfj", "value": 130000},
+        {"op": "i", "value": 13},
+        {"op": "npv"}
+      ],
+      "query": "display",
+      "expected_x": "212.18",
+      "format": "FIX 2",
+      "notes": "Validado em Python: Σ(CFj/(1+0.13)^j) = 212.18 ✓. Vetor-bandeira do Bloco 4: se este passar e cf-npv-002 também, a fórmula de §6 está implementada corretamente."
+    },
+    {
+      "id": "cf-npv-002-grouped",
+      "source": "manual, Seção 4, p. 64 (exemplo do terreno — 7 distintos com Nj=3 e Nj=2)",
+      "description": "NPV de investimento R$79k em terreno, fluxos anuais 14k/11k/10k×3/9.1k/9k×2/4.5k/100k. Taxa 13.5%. NPV = 907.77 — testa agrupamento via Nj.",
+      "operations": [
+        {"op": "clear_reg"},
+        {"op": "cfo", "value": -79000},
+        {"op": "cfj", "value": 14000},
+        {"op": "cfj", "value": 11000},
+        {"op": "cfj", "value": 10000},
+        {"op": "nj", "value": 3},
+        {"op": "cfj", "value": 9100},
+        {"op": "cfj", "value": 9000},
+        {"op": "nj", "value": 2},
+        {"op": "cfj", "value": 4500},
+        {"op": "cfj", "value": 100000},
+        {"op": "i", "value": 13.5},
+        {"op": "npv"}
+      ],
+      "query": "display",
+      "expected_x": "907.77",
+      "format": "FIX 2",
+      "notes": "Validado em Python: 11 períodos efetivos após expandir Nj=3 e Nj=2. Vetor-bandeira."
+    },
+    {
+      "id": "cf-irr-001",
+      "source": "manual, Seção 4, p. 64-65 (TIR do mesmo dataset do exemplo p. 64)",
+      "description": "IRR do dataset do terreno (cf-npv-002-grouped) = 13.72%. Newton-Raphson convergiu a 4 casas, manual reporta 13,72.",
+      "operations": [
+        {"op": "clear_reg"},
+        {"op": "cfo", "value": -79000},
+        {"op": "cfj", "value": 14000},
+        {"op": "cfj", "value": 11000},
+        {"op": "cfj", "value": 10000},
+        {"op": "nj", "value": 3},
+        {"op": "cfj", "value": 9100},
+        {"op": "cfj", "value": 9000},
+        {"op": "nj", "value": 2},
+        {"op": "cfj", "value": 4500},
+        {"op": "cfj", "value": 100000},
+        {"op": "irr"}
+      ],
+      "query": "display",
+      "expected_x": "13.72",
+      "format": "FIX 2",
+      "notes": "Validado em Python via NR convergindo em ~6 iter a partir de i=0. Vetor-bandeira do algoritmo IRR. Pode falhar com 1 ULP se a tolerância da engine ficar mais frouxa que 10⁻⁸ — então ajustar."
+    },
+    {
+      "id": "cf-irr-simple-2-flows",
+      "source": "derivação — mais simples possível (1 investimento + 1 retorno)",
+      "description": "Investimento -100 em ano 0, retorno +110 em ano 1. IRR exato = 10%.",
+      "operations": [
+        {"op": "clear_reg"},
+        {"op": "cfo", "value": -100},
+        {"op": "cfj", "value": 110},
+        {"op": "irr"}
+      ],
+      "query": "display",
+      "expected_x": "10.00",
+      "format": "FIX 2",
+      "notes": "Caso fechado algebraicamente: 0 = -100 + 110/(1+i) → i = 0.10. Valida que o NR aterrissa no valor exato (ou ULP-próximo) em datasets simples."
+    },
+    {
+      "id": "cf-npv-i-zero",
+      "source": "derivação — caso degenerado i=0 (formula doc §6 fim)",
+      "description": "NPV com i=0 vira soma simples ponderada: -100 + 50 + 60 + 70 = 80.00.",
+      "operations": [
+        {"op": "clear_reg"},
+        {"op": "cfo", "value": -100},
+        {"op": "cfj", "value": 50},
+        {"op": "cfj", "value": 60},
+        {"op": "cfj", "value": 70},
+        {"op": "i", "value": 0},
+        {"op": "npv"}
+      ],
+      "query": "display",
+      "expected_x": "80.00",
+      "format": "FIX 2",
+      "notes": "Engine deve tratar i=0 com fórmula linear (sem dividir por i). Caso de borda da §6 da formula doc."
+    },
+    {
+      "id": "cf-npv-only-cfo",
+      "source": "derivação — caso trivial n=0 (formula doc §6, pre-condição n=0 válida)",
+      "description": "NPV com apenas CFo = -1000 e nenhum CFj. NPV = -1000 (manual silencia mas é o limite trivial).",
+      "operations": [
+        {"op": "clear_reg"},
+        {"op": "cfo", "value": -1000},
+        {"op": "i", "value": 13},
+        {"op": "npv"}
+      ],
+      "query": "display",
+      "expected_x": "-1,000.00",
+      "format": "FIX 2",
+      "notes": "Após render PERIOD_COMMA + strip de vírgulas: '-1000.00'. Confirma n=0 não dispara erro (formula doc §6 pré-condição). Note que Hp12cError.CashflowEmpty (Erro 7) NÃO deve ser disparado aqui — é a discrepância §10.4 a resolver."
+    },
+    {
+      "id": "cf-npv-stores-pv",
+      "source": "manual, Seção 4, p. 61 ('VPL será armazenado no registro PV automaticamente')",
+      "description": "Após NPV, RCL PV devolve o valor calculado. Replica o exemplo p. 61 (NPV=212.18) e verifica que PV foi populado.",
+      "operations": [
+        {"op": "clear_reg"},
+        {"op": "cfo", "value": -80000},
+        {"op": "cfj", "value": -500},
+        {"op": "cfj", "value": 4500},
+        {"op": "cfj", "value": 5500},
+        {"op": "cfj", "value": 4500},
+        {"op": "cfj", "value": 130000},
+        {"op": "i", "value": 13},
+        {"op": "npv"},
+        {"op": "rcl_pv"}
+      ],
+      "query": "display",
+      "expected_x": "212.18",
+      "format": "FIX 2",
+      "notes": "Pós-condição arquitetural — formula doc §6: NPV escreve em financial.pv automaticamente. Se este teste falhar mas cf-npv-001 passar, o reducer está calculando NPV mas esquecendo de gravar em PV."
+    },
+    {
+      "id": "cf-irr-stores-i",
+      "source": "manual, Seção 4, p. 65 ('TIR será automaticamente armazenado no registro i')",
+      "description": "Após IRR, RCL i devolve o valor calculado. Mesmo dataset de cf-irr-simple-2-flows (esperado IRR=10%).",
+      "operations": [
+        {"op": "clear_reg"},
+        {"op": "cfo", "value": -100},
+        {"op": "cfj", "value": 110},
+        {"op": "irr"},
+        {"op": "rcl_i"}
+      ],
+      "query": "display",
+      "expected_x": "10.00",
+      "format": "FIX 2",
+      "notes": "Pós-condição arquitetural — formula doc §7.3: IRR escreve em financial.i (em percentual)."
+    },
+    {
+      "id": "cf-error-irr-no-sign-change-positive",
+      "source": "Apêndice C p. 191 (Caso 4 — Erro 7 quando 'não houver pelo menos um fluxo de caixa positivo e pelo menos um fluxo de caixa negativo')",
+      "description": "IRR com todos os fluxos positivos → Erro 7 (sem mudança de sinal, IRR não existe).",
+      "operations": [
+        {"op": "clear_reg"},
+        {"op": "cfo", "value": 100},
+        {"op": "cfj", "value": 50},
+        {"op": "cfj", "value": 60},
+        {"op": "irr"}
+      ],
+      "query": "display",
+      "error": "Error 7",
+      "format": "ERROR",
+      "notes": "Pré-cheque do reducer (formula doc §7.2): se max(CFs) > 0 e min(CFs) > 0 (mesmo sinal), dispara Erro 7 sem entrar no NR. Mais barato e determinístico que esperar divergência."
+    },
+    {
+      "id": "cf-error-irr-no-sign-change-negative",
+      "source": "Apêndice C p. 191 (Caso 4 simétrico — todos negativos)",
+      "description": "IRR com todos os fluxos negativos → Erro 7.",
+      "operations": [
+        {"op": "clear_reg"},
+        {"op": "cfo", "value": -100},
+        {"op": "cfj", "value": -50},
+        {"op": "cfj", "value": -60},
+        {"op": "irr"}
+      ],
+      "query": "display",
+      "error": "Error 7",
+      "format": "ERROR"
+    },
+    {
+      "id": "cf-error-nj-too-large",
+      "source": "Apêndice D, p. 195 ('Nj: x > 99 → Erro 6')",
+      "description": "Nj=100 dispara Erro 6 (limite máximo é 99).",
+      "operations": [
+        {"op": "clear_reg"},
+        {"op": "cfo", "value": -1000},
+        {"op": "cfj", "value": 100},
+        {"op": "nj", "value": 100}
+      ],
+      "query": "display",
+      "error": "Error 6",
+      "format": "ERROR",
+      "notes": "Diverge do Hp12cError.kt atual que mapeia esse caso como Erro 7 (CashflowNjTooLarge). Apêndice D é categórico: Erro 6. Vetor força a correção no passo 16 — formula doc §10.4."
+    },
+    {
+      "id": "cf-error-nj-negative",
+      "source": "Apêndice D, p. 195 ('Nj: x < 0 → Erro 6')",
+      "description": "Nj=-1 dispara Erro 6.",
+      "operations": [
+        {"op": "clear_reg"},
+        {"op": "cfo", "value": -1000},
+        {"op": "cfj", "value": 100},
+        {"op": "nj", "value": -1}
+      ],
+      "query": "display",
+      "error": "Error 6",
+      "format": "ERROR"
+    },
+    {
+      "id": "cf-error-nj-non-integer",
+      "source": "Apêndice D, p. 195 ('Nj: x não inteiro → Erro 6')",
+      "description": "Nj=2.5 dispara Erro 6.",
+      "operations": [
+        {"op": "clear_reg"},
+        {"op": "cfo", "value": -1000},
+        {"op": "cfj", "value": 100},
+        {"op": "nj", "value": 2.5}
+      ],
+      "query": "display",
+      "error": "Error 6",
+      "format": "ERROR"
+    },
+    {
+      "id": "cf-error-nj-without-cfj",
+      "source": "Apêndice D, p. 195 ('Tentou-se informar Nj no lugar do CF₀ → Erro 6')",
+      "description": "Nj antes de qualquer CFj (n=0) dispara Erro 6.",
+      "operations": [
+        {"op": "clear_reg"},
+        {"op": "cfo", "value": -1000},
+        {"op": "nj", "value": 5}
+      ],
+      "query": "display",
+      "error": "Error 6",
+      "format": "ERROR",
+      "notes": "Após CFo, n=0; aplicar Nj sem ter aplicado nenhum g CFj antes é a condição literal do manual."
+    },
+    {
+      "id": "cf-irr-with-erratum-multi-root",
+      "source": "Apêndice C p. 191 (Caso 3 — múltiplas raízes possíveis)",
+      "description": "Dataset com múltiplas mudanças de sinal: -100, +230, -132 (raízes em 10% e 20%). HP típica: encontra UMA raiz e reporta. Sem mestre canônico, esperamos a raiz menor (~10%) por construção do NR começando em i=0.",
+      "operations": [
+        {"op": "clear_reg"},
+        {"op": "cfo", "value": -100},
+        {"op": "cfj", "value": 230},
+        {"op": "cfj", "value": -132},
+        {"op": "irr"}
+      ],
+      "query": "display",
+      "expected_x": "10.00",
+      "format": "FIX 2",
+      "notes": "Caso de múltiplas raízes — NPV(i) = -100 + 230/(1+i) - 132/(1+i)² tem raízes em i=10% e i=20%. Validado em Python: Newton-Raphson começando em i=0% converge a 10.0000% em ~5 iterações (raiz mais próxima do chute inicial). HP física pode disparar Erro 3 ('cálculo muito complexo') por heurística conservadora; nossa engine retorna a raiz que o algoritmo encontra. Divergência de comportamento documentada em formula doc §10 — se vetor falhar com Erro 3 no passo 16, discutir se ajustamos heurística ou aceitamos a diferença."
+    }
+  ]
+}
