@@ -54,6 +54,7 @@ import com.arcom.hp12c.engine.state.TvmMode
 private data class LayoutTokens(
     val keyFontSize:     TextUnit,
     val keySubFontSize:  TextUnit,
+    val showSubLabels:   Boolean,   // false em landscape: remove f/g labels para dar altura às teclas
     val keyCorner:       Dp,
     val keyRowSpacing:   Dp,
     val keyColSpacing:   Dp,
@@ -68,6 +69,7 @@ private data class LayoutTokens(
 private val PortraitTokens = LayoutTokens(
     keyFontSize    = 15.sp,
     keySubFontSize = 7.sp,
+    showSubLabels  = true,
     keyCorner      = 4.dp,
     keyRowSpacing  = 4.dp,
     keyColSpacing  = 4.dp,
@@ -79,16 +81,18 @@ private val PortraitTokens = LayoutTokens(
     outerPadV      = 0.dp,
 )
 
+// Landscape: teclas maiores, sem sub-labels, display compacto
 private val LandscapeTokens = LayoutTokens(
-    keyFontSize    = 12.sp,
+    keyFontSize    = 14.sp,
     keySubFontSize = 5.sp,
+    showSubLabels  = false,          // omite f/g labels: +30% de altura para o corpo da tecla
     keyCorner      = 3.dp,
-    keyRowSpacing  = 3.dp,
+    keyRowSpacing  = 4.dp,
     keyColSpacing  = 3.dp,
-    displayNumSize = 28.sp,
-    displayIndSize = 7.sp,
+    displayNumSize = 22.sp,          // compacto para ceder altura ao teclado
+    displayIndSize = 6.sp,
     panelPadH      = 6.dp,
-    panelPadV      = 5.dp,
+    panelPadV      = 4.dp,
     outerPadH      = 0.dp,
     outerPadV      = 0.dp,
 )
@@ -209,77 +213,66 @@ private fun DisplayStrip(
             ),
     ) {
         if (isLandscape) {
-            // Landscape: branding esquerda | LCD centro | logo direita
+            // Landscape: tudo numa linha horizontal única e COMPACTA
+            // HP 12c | [LCD] | hp logo
             Row(
                 modifier          = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // Branding + toggle
-                Column(
-                    modifier            = Modifier.weight(0.18f),
-                    verticalArrangement = Arrangement.Center,
-                ) {
-                    Text(
-                        text       = "HP 12c",
-                        color      = skin.body,
-                        fontSize   = 11.sp,
-                        fontStyle  = FontStyle.Italic,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        text       = "Platinum",
-                        color      = skin.body,
-                        fontSize   = 9.sp,
-                        fontStyle  = FontStyle.Italic,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
-                // LCD — porção central
+                // Branding
+                Text(
+                    text          = "HP 12c  Platinum",
+                    color         = skin.body,
+                    fontSize      = 9.sp,
+                    fontStyle     = FontStyle.Italic,
+                    fontWeight    = FontWeight.Bold,
+                    modifier      = Modifier.weight(0.16f),
+                    softWrap      = false,
+                )
+                // LCD — porção central (mais estreita = menos altura da faixa)
                 Hp12cDisplay(
                     calcState = calcState,
                     shift     = shift,
                     pending   = pending,
                     isRunning = isRunning,
-                    modifier  = Modifier.weight(0.64f),
+                    modifier  = Modifier.weight(0.68f),
                 )
-                // Logo HP + toggle skin
+                // Logo HP + toggle skin (compacto)
                 Column(
-                    modifier            = Modifier.weight(0.18f),
+                    modifier            = Modifier.weight(0.16f),
                     horizontalAlignment = Alignment.End,
                     verticalArrangement = Arrangement.Center,
                 ) {
-                    // Logo hp italic + círculo
-                    Box(
-                        modifier         = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(skin.body)
-                            .padding(horizontal = 6.dp, vertical = 3.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text          = "hp",
-                            color         = skin.displayStrip,
-                            fontSize      = 14.sp,
-                            fontStyle     = FontStyle.Italic,
-                            fontWeight    = FontWeight.ExtraBold,
-                            letterSpacing = (-0.5).sp,
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier         = Modifier
+                                .clip(RoundedCornerShape(3.dp))
+                                .background(skin.body)
+                                .padding(horizontal = 4.dp, vertical = 2.dp),
+                        ) {
+                            Text(
+                                text          = "hp",
+                                color         = skin.displayStrip,
+                                fontSize      = 11.sp,
+                                fontStyle     = FontStyle.Italic,
+                                fontWeight    = FontWeight.ExtraBold,
+                                letterSpacing = (-0.5).sp,
+                            )
+                        }
                     }
-                    Spacer(Modifier.height(2.dp))
                     Text(
-                        text       = "12C PLATINUM",
-                        color      = skin.body,
-                        fontSize   = 6.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.3.sp,
+                        text          = "12C PLATINUM",
+                        color         = skin.body,
+                        fontSize      = 5.5.sp,
+                        fontWeight    = FontWeight.Bold,
+                        letterSpacing = 0.2.sp,
                     )
-                    Spacer(Modifier.height(4.dp))
                     Text(
-                        text     = "⊞ ${skin.name}",
-                        color    = skin.body.copy(alpha = 0.7f),
-                        fontSize = 7.sp,
+                        text     = "⊞",
+                        color    = skin.body.copy(alpha = 0.6f),
+                        fontSize = 8.sp,
                         modifier = Modifier.clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication        = null,
@@ -482,6 +475,8 @@ private fun Hp12cDisplay(
         else                     -> engine.formatDisplay(calcState, NumericSeparator.COMMA_PERIOD)
     }
 
+    val isLandscape = !tokens.showSubLabels  // landscape = modo compacto
+
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(4.dp))
@@ -493,40 +488,70 @@ private fun Hp12cDisplay(
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(2.dp))
                 .background(skin.displayBg)
-                .padding(horizontal = 10.dp, vertical = 4.dp),
+                .padding(
+                    horizontal = 10.dp,
+                    vertical   = if (isLandscape) 2.dp else 4.dp,
+                ),
         ) {
-            Column(modifier = Modifier.fillMaxWidth()) {
+            if (isLandscape) {
+                // Landscape: número + indicadores em linha única (mínimo de altura)
                 Row(
-                    modifier              = Modifier.fillMaxWidth(),
-                    verticalAlignment     = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Start,
+                    modifier          = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    IndicatorLabel("f",     active = shift == ShiftState.F_SHIFT)
-                    Spacer(Modifier.width(5.dp))
-                    IndicatorLabel("g",     active = shift == ShiftState.G_SHIFT)
-                    Spacer(Modifier.weight(1f))
-                    IndicatorLabel("BEGIN", active = calcState.financial.mode == TvmMode.BEGIN)
-                    Spacer(Modifier.width(5.dp))
-                    IndicatorLabel("PRGM",  active = calcState.programState is ProgramState.Editing)
-                    Spacer(Modifier.width(5.dp))
-                    IndicatorLabel("RUN",   active = isRunning)
+                    // Indicadores compactos à esquerda
+                    IndicatorLabel("f",  active = shift == ShiftState.F_SHIFT)
+                    Spacer(Modifier.width(4.dp))
+                    IndicatorLabel("g",  active = shift == ShiftState.G_SHIFT)
+                    Spacer(Modifier.width(4.dp))
+                    IndicatorLabel("B",  active = calcState.financial.mode == TvmMode.BEGIN)
+                    // Número ocupa o restante, alinhado à direita
+                    Text(
+                        text       = displayText,
+                        color      = skin.displayText,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        fontSize   = tokens.displayNumSize,
+                        textAlign  = TextAlign.End,
+                        maxLines   = 1,
+                        modifier   = Modifier.weight(1f),
+                    )
                 }
-                Text(
-                    text       = displayText,
-                    color      = skin.displayText,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    fontSize   = tokens.displayNumSize,
-                    textAlign  = TextAlign.End,
-                    maxLines   = 1,
-                    modifier   = Modifier.fillMaxWidth().padding(top = 2.dp),
-                )
-                Text(
-                    text       = "RPN",
-                    color      = skin.indicatorOff,
-                    fontSize   = 6.sp,
-                    fontFamily = FontFamily.Monospace,
-                )
+            } else {
+                // Portrait: layout completo em coluna
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier              = Modifier.fillMaxWidth(),
+                        verticalAlignment     = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Start,
+                    ) {
+                        IndicatorLabel("f",     active = shift == ShiftState.F_SHIFT)
+                        Spacer(Modifier.width(5.dp))
+                        IndicatorLabel("g",     active = shift == ShiftState.G_SHIFT)
+                        Spacer(Modifier.weight(1f))
+                        IndicatorLabel("BEGIN", active = calcState.financial.mode == TvmMode.BEGIN)
+                        Spacer(Modifier.width(5.dp))
+                        IndicatorLabel("PRGM",  active = calcState.programState is ProgramState.Editing)
+                        Spacer(Modifier.width(5.dp))
+                        IndicatorLabel("RUN",   active = isRunning)
+                    }
+                    Text(
+                        text       = displayText,
+                        color      = skin.displayText,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        fontSize   = tokens.displayNumSize,
+                        textAlign  = TextAlign.End,
+                        maxLines   = 1,
+                        modifier   = Modifier.fillMaxWidth().padding(top = 2.dp),
+                    )
+                    Text(
+                        text       = "RPN",
+                        color      = skin.indicatorOff,
+                        fontSize   = 6.sp,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
             }
         }
     }
@@ -610,16 +635,18 @@ private fun Hp12cKeyButton(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        // ── Label f acima (dourado) ──────────────────────────────────────────
-        Text(
-            text      = def.fLabel,
-            color     = if (def.fLabel.isNotBlank()) skin.fLabelColor else Color.Transparent,
-            fontSize  = tokens.keySubFontSize,
-            maxLines  = 1,
-            textAlign = TextAlign.Center,
-            softWrap  = false,
-            modifier  = Modifier.fillMaxWidth(),
-        )
+        // ── Label f acima (dourado) — omitido em landscape para dar mais altura à tecla ──
+        if (tokens.showSubLabels) {
+            Text(
+                text      = def.fLabel,
+                color     = if (def.fLabel.isNotBlank()) skin.fLabelColor else Color.Transparent,
+                fontSize  = tokens.keySubFontSize,
+                maxLines  = 1,
+                textAlign = TextAlign.Center,
+                softWrap  = false,
+                modifier  = Modifier.fillMaxWidth(),
+            )
+        }
 
         // ── Corpo da tecla ───────────────────────────────────────────────────
         Box(
@@ -670,16 +697,18 @@ private fun Hp12cKeyButton(
             )
         }
 
-        // ── Label g abaixo (azul) ────────────────────────────────────────────
-        Text(
-            text      = def.gLabel,
-            color     = if (def.gLabel.isNotBlank()) skin.gLabelColor else Color.Transparent,
-            fontSize  = tokens.keySubFontSize,
-            maxLines  = 1,
-            textAlign = TextAlign.Center,
-            softWrap  = false,
-            modifier  = Modifier.fillMaxWidth(),
-        )
+        // ── Label g abaixo (azul) — omitido em landscape ────────────────────
+        if (tokens.showSubLabels) {
+            Text(
+                text      = def.gLabel,
+                color     = if (def.gLabel.isNotBlank()) skin.gLabelColor else Color.Transparent,
+                fontSize  = tokens.keySubFontSize,
+                maxLines  = 1,
+                textAlign = TextAlign.Center,
+                softWrap  = false,
+                modifier  = Modifier.fillMaxWidth(),
+            )
+        }
     }
 }
 
