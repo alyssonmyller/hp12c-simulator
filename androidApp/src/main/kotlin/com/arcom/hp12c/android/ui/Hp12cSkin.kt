@@ -17,9 +17,12 @@ import androidx.compose.ui.graphics.Color
 data class Hp12cSkin(
     val name: String,
 
-    // Corpo externo
+    // Corpo externo (moldura prateada/metálica)
     val body:       Color,
     val bodyEdge:   Color,   // borda/aresta lateral — sombra perimetral
+
+    // Painel do teclado (área preta abaixo do display — painel separado da moldura)
+    val keyboardPanel: Color,
 
     // Visor LCD
     val displayBezel:  Color,   // moldura escura ao redor do LCD
@@ -57,48 +60,51 @@ object Hp12cSkins {
      */
     val Classic = Hp12cSkin(
         name             = "Platinum",
-        // Corpo
-        body             = Color(0xFF9E9EA2),   // prata metálico (HP Platinum)
-        bodyEdge         = Color(0xFF6A6A6E),   // aresta mais escura
-        // Display
-        displayBezel     = Color(0xFF1A1A1A),   // moldura LCD quase preta
-        displayBg        = Color(0xFF1E2A18),   // fundo LCD verde muito escuro
-        displayText      = Color(0xFF92D040),   // fósforo verde LCD
-        indicatorOn      = Color(0xFF92D040),
-        indicatorOff     = Color(0xFF2C3C22),
-        // Teclas
-        keyNormal        = Color(0xFF1C1C1C),   // preto grafite
-        keyFinancial     = Color(0xFF242420),   // levemente mais quente (TVM row)
-        keyF             = Color(0xFFC05800),   // laranja HP
-        keyG             = Color(0xFF0055AA),   // azul HP
-        keyOn            = Color(0xFF2A2A2A),   // cinza escuro (ON é discreet)
-        keyEnter         = Color(0xFF1C1C1C),   // igual normal
-        keyTopHighlight  = Color(0x28FFFFFF),   // reflexo sutil no topo da tecla
-        keyBottomShadow  = Color(0x44000000),   // sombra na base
+        // Corpo (moldura superior prateada/alumínio — igual à calculadora física)
+        body             = Color(0xFFB8B8BC),   // alumínio claro
+        bodyEdge         = Color(0xFF787880),   // aresta/sombra da moldura
+        // Painel do teclado (área preta fosca que fica ABAIXO do display)
+        keyboardPanel    = Color(0xFF141414),   // preto fosco quase puro
+        // Display LCD — fundo claro como a HP 12C Platinum física (LCD reflexivo)
+        displayBezel     = Color(0xFF888890),   // moldura prateada em volta do LCD
+        displayBg        = Color(0xFFCDD4C0),   // verde-acinzentado claro (LCD platinum)
+        displayText      = Color(0xFF1A2A10),   // dígitos verde-escuro (segmentos LCD)
+        indicatorOn      = Color(0xFF1A2A10),
+        indicatorOff     = Color(0xFFA4AE98),   // indicadores apagados (cinza-verde)
+        // Teclas: escuras sobre painel preto — contraste explícito com o panel
+        keyNormal        = Color(0xFF2E2E2E),   // cinza escuro (visível sobre #141414)
+        keyFinancial     = Color(0xFF2E2E2A),   // levemente mais quente (TVM)
+        keyF             = Color(0xFFCC5500),   // laranja HP característico
+        keyG             = Color(0xFF1A5FAB),   // azul HP característico
+        keyOn            = Color(0xFF262626),
+        keyEnter         = Color(0xFF2E2E2E),
+        keyTopHighlight  = Color(0x55FFFFFF),   // highlight mais intenso para 3D visível
+        keyBottomShadow  = Color(0x88000000),   // sombra mais intensa
         // Texto
-        keyLabel         = Color(0xFFFFFFFF),
-        fLabelColor      = Color(0xFFFF8C00),   // labels laranja acima das teclas
-        gLabelColor      = Color(0xFF55AAFF),   // labels azul abaixo das teclas
+        keyLabel         = Color(0xFFEEEEEE),   // branco levemente warm
+        fLabelColor      = Color(0xFFE07020),   // laranja f (silk-screen acima das teclas)
+        gLabelColor      = Color(0xFF4A9FD8),   // azul g (silk-screen abaixo das teclas)
     )
 
-    /** Escuro/flat inspirado em Material3 Dark Theme. */
+    /** Escuro/flat inspirado em Material3 Dark Theme com display fósforo verde. */
     val Modern = Hp12cSkin(
         name             = "Modern",
-        body             = Color(0xFF111111),
-        bodyEdge         = Color(0xFF000000),
+        body             = Color(0xFF1E1E2E),
+        bodyEdge         = Color(0xFF0D0D1A),
+        keyboardPanel    = Color(0xFF090910),
         displayBezel     = Color(0xFF0D0D1A),
         displayBg        = Color(0xFF0D1B2A),
         displayText      = Color(0xFF00E5FF),
         indicatorOn      = Color(0xFF00E5FF),
         indicatorOff     = Color(0xFF1A2A3A),
-        keyNormal        = Color(0xFF1E1E2E),
-        keyFinancial     = Color(0xFF16213E),
+        keyNormal        = Color(0xFF252538),
+        keyFinancial     = Color(0xFF1E2048),
         keyF             = Color(0xFF7C3AED),
         keyG             = Color(0xFF0D9488),
         keyOn            = Color(0xFFE63946),
         keyEnter         = Color(0xFF252540),
-        keyTopHighlight  = Color(0x22FFFFFF),
-        keyBottomShadow  = Color(0x55000000),
+        keyTopHighlight  = Color(0x33FFFFFF),
+        keyBottomShadow  = Color(0x66000000),
         keyLabel         = Color(0xFFE2E8F0),
         fLabelColor      = Color(0xFFC084FC),
         gLabelColor      = Color(0xFF2DD4BF),
