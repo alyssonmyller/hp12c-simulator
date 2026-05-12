@@ -66,8 +66,8 @@ private data class LayoutTokens(
 )
 
 private val PortraitTokens = LayoutTokens(
-    keyFontSize    = 12.sp,
-    keySubFontSize = 6.sp,
+    keyFontSize    = 14.sp,
+    keySubFontSize = 7.sp,
     keyCorner      = 4.dp,
     keyRowSpacing  = 3.dp,
     keyColSpacing  = 3.dp,
@@ -80,16 +80,16 @@ private val PortraitTokens = LayoutTokens(
 )
 
 private val LandscapeTokens = LayoutTokens(
-    keyFontSize    = 11.sp,
-    keySubFontSize = 5.sp,
+    keyFontSize    = 14.sp,
+    keySubFontSize = 6.sp,
     keyCorner      = 3.dp,
     keyRowSpacing  = 2.dp,
     keyColSpacing  = 2.dp,
     displayNumSize = 26.sp,
     displayIndSize = 7.sp,
-    panelPadH      = 5.dp,
-    panelPadV      = 4.dp,
-    outerPadH      = 6.dp,
+    panelPadH      = 4.dp,
+    panelPadV      = 3.dp,
+    outerPadH      = 5.dp,
     outerPadV      = 4.dp,
 )
 
@@ -242,7 +242,7 @@ private fun LandscapeLayout(
         // ── Coluna esquerda — moldura prateada com display ────────────────
         Column(
             modifier = Modifier
-                .weight(0.28f)
+                .weight(0.24f)
                 .fillMaxHeight()
                 .padding(horizontal = tokens.outerPadH, vertical = tokens.outerPadV),
             verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -290,7 +290,7 @@ private fun LandscapeLayout(
             calcState  = calcState,
             onKeyPress = onKeyPress,
             modifier   = Modifier
-                .weight(0.72f)
+                .weight(0.76f)
                 .fillMaxHeight(),
             cornerTop  = 4.dp,
         )
@@ -652,6 +652,7 @@ private fun Hp12cKeyButton(
                 textAlign  = TextAlign.Center,
                 maxLines   = 1,
                 lineHeight = tokens.keyFontSize,
+                softWrap   = false,
             )
         }
 
