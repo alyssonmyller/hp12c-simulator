@@ -7,97 +7,114 @@ import androidx.compose.ui.graphics.Color
 //  Tokens de design do skin
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Conjunto de tokens visuais que definem a aparência completa da calculadora.
- *
- * Um skin **nunca** altera o comportamento da engine — apenas tokens de cor.
- * Todos os composables leem o skin ativo via [LocalSkin].current, sem precisar
- * receber o skin como parâmetro explícito.
- */
 data class Hp12cSkin(
     val name: String,
 
-    // Corpo externo (moldura prateada/metálica)
-    val body:       Color,
-    val bodyEdge:   Color,   // borda/aresta lateral — sombra perimetral
+    // Corpo externo (moldura/carcaça)
+    val body:          Color,
+    val bodyEdge:      Color,
 
-    // Painel do teclado (área preta abaixo do display — painel separado da moldura)
+    // Painel do teclado (bloco separado da moldura — mais escuro que as teclas)
     val keyboardPanel: Color,
 
-    // Visor LCD
-    val displayBezel:  Color,   // moldura escura ao redor do LCD
-    val displayBg:     Color,   // fundo do painel LCD
-    val displayText:   Color,
+    // Faixa de display (bezel metálico ao redor do LCD)
+    val displayStrip:  Color,   // fundo da faixa prateada com o LCD
+    val displayBezel:  Color,   // moldura interna ao redor do painel LCD
+    val displayBg:     Color,   // fundo LCD (olive-green na Platinum física)
+    val displayText:   Color,   // dígitos LCD
     val indicatorOn:   Color,
     val indicatorOff:  Color,
 
     // Teclas — fundos
-    val keyNormal:       Color,
-    val keyFinancial:    Color,
-    val keyF:            Color,
-    val keyG:            Color,
-    val keyOn:           Color,
-    val keyEnter:        Color,
-    val keyTopHighlight: Color,  // reflexo superior que dá efeito 3D
-    val keyBottomShadow: Color,  // sombra inferior que dá profundidade
+    val keyNormal:       Color,   // operações: fundo escuro
+    val keyNumeric:      Color,   // dígitos 0–9 e ponto: fundo CLARO (#D1D1D1 na física)
+    val keyFinancial:    Color,   // TVM (n/i/PV/PMT/FV)
+    val keyF:            Color,   // tecla [f] dourada
+    val keyG:            Color,   // tecla [g] azul cobalto
+    val keyOn:           Color,   // tecla ON
+    val keyEnter:        Color,   // tecla ENTER
+    val keyTopHighlight: Color,
+    val keyBottomShadow: Color,
 
-    // Textos
-    val keyLabel:    Color,
-    val fLabelColor: Color,
-    val gLabelColor: Color,
+    // Texto das teclas
+    val keyLabel:        Color,   // texto em teclas escuras (branco)
+    val keyLabelNumeric: Color,   // texto em teclas claras (preto)
+    val fLabelColor:     Color,   // silk-screen laranja/dourado acima das teclas
+    val gLabelColor:     Color,   // silk-screen azul abaixo das teclas
+
+    // Branding
+    val brandingText:    Color,   // "HEWLETT-PACKARD 12C PLATINUM"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Instâncias de skin disponíveis
+//  Instâncias disponíveis
 // ─────────────────────────────────────────────────────────────────────────────
 
 object Hp12cSkins {
 
     /**
-     * HP 12C Platinum — carcaça prateada/metálica, LCD verde-escuro fosforescente,
-     * teclas pretas com labels laranja (f) e azul (g).
-     * Referência visual: HP 12C Platinum física + screenshot do app de referência.
+     * HP 12C Platinum — fiel à calculadora física.
+     *
+     * Referências visuais:
+     * - Carcaça: grafite escuro (#1A1A1A), faixa metálica prata acima do teclado.
+     * - LCD: fundo olive-acinzentado (#97A082), dígitos 7-segmentos pretos.
+     * - Teclas de operação: cinza escuro (#2D2D2D) com texto branco.
+     * - Teclas numéricas (0–9, ·): cinza CLARO (#CBCBCB) com texto preto.
+     * - [f]: dourado (#CC8800). [g]: azul cobalto (#0056B3).
      */
     val Classic = Hp12cSkin(
         name             = "Platinum",
-        // Corpo (moldura superior prateada/alumínio — igual à calculadora física)
-        body             = Color(0xFFB8B8BC),   // alumínio claro
-        bodyEdge         = Color(0xFF787880),   // aresta/sombra da moldura
-        // Painel do teclado (área preta fosca que fica ABAIXO do display)
-        keyboardPanel    = Color(0xFF141414),   // preto fosco quase puro
-        // Display LCD — fundo claro como a HP 12C Platinum física (LCD reflexivo)
-        displayBezel     = Color(0xFF888890),   // moldura prateada em volta do LCD
-        displayBg        = Color(0xFFCDD4C0),   // verde-acinzentado claro (LCD platinum)
-        displayText      = Color(0xFF1A2A10),   // dígitos verde-escuro (segmentos LCD)
-        indicatorOn      = Color(0xFF1A2A10),
-        indicatorOff     = Color(0xFFA4AE98),   // indicadores apagados (cinza-verde)
-        // Teclas: escuras sobre painel preto — contraste explícito com o panel
-        keyNormal        = Color(0xFF2E2E2E),   // cinza escuro (visível sobre #141414)
-        keyFinancial     = Color(0xFF2E2E2A),   // levemente mais quente (TVM)
-        keyF             = Color(0xFFCC5500),   // laranja HP característico
-        keyG             = Color(0xFF1A5FAB),   // azul HP característico
-        keyOn            = Color(0xFF262626),
-        keyEnter         = Color(0xFF2E2E2E),
-        keyTopHighlight  = Color(0x55FFFFFF),   // highlight mais intenso para 3D visível
-        keyBottomShadow  = Color(0x88000000),   // sombra mais intensa
+
+        // Carcaça grafite escura
+        body             = Color(0xFF232323),
+        bodyEdge         = Color(0xFF0E0E0E),
+
+        // Painel do teclado (quase preto, abaixo da faixa do display)
+        keyboardPanel    = Color(0xFF141414),
+
+        // Faixa prateada do display
+        displayStrip     = Color(0xFFB0B0B8),   // prata/alumínio (gradiente depois)
+        displayBezel     = Color(0xFF888890),   // moldura interna do LCD
+        displayBg        = Color(0xFF97A082),   // olive-green (LCD da HP Platinum física)
+        displayText      = Color(0xFF0A1208),   // preto-esverdeado (segmentos LCD)
+        indicatorOn      = Color(0xFF0A1208),
+        indicatorOff     = Color(0xFF6A7A60),   // indicadores apagados
+
+        // Teclas
+        keyNormal        = Color(0xFF2D2D2D),   // cinza escuro — operações
+        keyNumeric       = Color(0xFFCBCBCB),   // cinza CLARO — dígitos (grande diferença visual)
+        keyFinancial     = Color(0xFF272724),   // levemente mais quente (TVM)
+        keyF             = Color(0xFFCC8800),   // dourado HP
+        keyG             = Color(0xFF0056B3),   // azul cobalto HP
+        keyOn            = Color(0xFF252525),
+        keyEnter         = Color(0xFF2D2D2D),
+        keyTopHighlight  = Color(0x50FFFFFF),
+        keyBottomShadow  = Color(0x70000000),
+
         // Texto
-        keyLabel         = Color(0xFFEEEEEE),   // branco levemente warm
-        fLabelColor      = Color(0xFFE07020),   // laranja f (silk-screen acima das teclas)
-        gLabelColor      = Color(0xFF4A9FD8),   // azul g (silk-screen abaixo das teclas)
+        keyLabel         = Color(0xFFEEEEEE),   // branco para teclas escuras
+        keyLabelNumeric  = Color(0xFF111111),   // preto para teclas claras
+        fLabelColor      = Color(0xFFCC8800),   // dourado (silk-screen acima)
+        gLabelColor      = Color(0xFF1A72D4),   // azul (silk-screen abaixo)
+
+        // Branding
+        brandingText     = Color(0xFF888888),
     )
 
-    /** Escuro/flat inspirado em Material3 Dark Theme com display fósforo verde. */
+    /** Escuro/moderno — display fósforo ciano. */
     val Modern = Hp12cSkin(
         name             = "Modern",
-        body             = Color(0xFF1E1E2E),
-        bodyEdge         = Color(0xFF0D0D1A),
-        keyboardPanel    = Color(0xFF090910),
-        displayBezel     = Color(0xFF0D0D1A),
+        body             = Color(0xFF1A1A2E),
+        bodyEdge         = Color(0xFF0A0A18),
+        keyboardPanel    = Color(0xFF090912),
+        displayStrip     = Color(0xFF1E1E38),
+        displayBezel     = Color(0xFF0D0D22),
         displayBg        = Color(0xFF0D1B2A),
         displayText      = Color(0xFF00E5FF),
         indicatorOn      = Color(0xFF00E5FF),
         indicatorOff     = Color(0xFF1A2A3A),
         keyNormal        = Color(0xFF252538),
+        keyNumeric       = Color(0xFF3A3A58),
         keyFinancial     = Color(0xFF1E2048),
         keyF             = Color(0xFF7C3AED),
         keyG             = Color(0xFF0D9488),
@@ -106,18 +123,15 @@ object Hp12cSkins {
         keyTopHighlight  = Color(0x33FFFFFF),
         keyBottomShadow  = Color(0x66000000),
         keyLabel         = Color(0xFFE2E8F0),
+        keyLabelNumeric  = Color(0xFFE2E8F0),
         fLabelColor      = Color(0xFFC084FC),
         gLabelColor      = Color(0xFF2DD4BF),
+        brandingText     = Color(0xFF4A4A6A),
     )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  CompositionLocal — injeção de skin na árvore de composables
+//  CompositionLocal
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * `staticCompositionLocalOf` em vez de `compositionLocalOf`: mudanças de skin são
- * raras (toggle manual), então pagar a recomposição total da subárvore é mais simples
- * do que a observação line-by-line do `compositionLocalOf`.
- */
 val LocalSkin = staticCompositionLocalOf { Hp12cSkins.Classic }
