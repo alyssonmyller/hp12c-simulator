@@ -1,5 +1,6 @@
 package com.arcom.hp12c.android.ui
 
+import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -29,10 +30,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.arcom.hp12c.engine.CalculatorEngine
@@ -41,6 +45,49 @@ import com.arcom.hp12c.engine.state.CalculatorState
 import com.arcom.hp12c.engine.state.NumericSeparator
 import com.arcom.hp12c.engine.state.ProgramState
 import com.arcom.hp12c.engine.state.TvmMode
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Tokens de layout responsivo (portrait vs landscape)
+// ─────────────────────────────────────────────────────────────────────────────
+
+private data class LayoutTokens(
+    val keyFontSize: TextUnit,
+    val keySubFontSize: TextUnit,  // f/g labels acima/abaixo das teclas
+    val keyCorner: Dp,
+    val keyRowSpacing: Dp,
+    val keyColSpacing: Dp,
+    val displayNumFontSize: TextUnit,
+    val displayIndicatorSize: TextUnit,
+    val outerPadH: Dp,
+    val outerPadV: Dp,
+)
+
+private val PortraitTokens = LayoutTokens(
+    keyFontSize          = 12.sp,
+    keySubFontSize       = 6.5.sp,
+    keyCorner            = 4.dp,
+    keyRowSpacing        = 3.dp,
+    keyColSpacing        = 3.dp,
+    displayNumFontSize   = 30.sp,
+    displayIndicatorSize = 8.sp,
+    outerPadH            = 10.dp,
+    outerPadV            = 6.dp,
+)
+
+private val LandscapeTokens = LayoutTokens(
+    keyFontSize          = 10.sp,
+    keySubFontSize       = 5.sp,
+    keyCorner            = 3.dp,
+    keyRowSpacing        = 2.dp,
+    keyColSpacing        = 2.dp,
+    displayNumFontSize   = 24.sp,
+    displayIndicatorSize = 7.sp,
+    outerPadH            = 6.dp,
+    outerPadV            = 4.dp,
+)
+
+// Injeta os tokens de layout na árvore, igual ao skin
+private val LocalLayout = androidx.compose.runtime.staticCompositionLocalOf { PortraitTokens }
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Tela principal
@@ -52,6 +99,10 @@ import com.arcom.hp12c.engine.state.TvmMode
  * Recebe o [calcState] imutável e devolve eventos via [onEvent]. Todo o estado
  * de UI transitório (shift f/g e operação pendente STO/RCL) é mantido aqui
  * como Compose state local, não como parte do [CalculatorState] da engine.
+ *
+ * Em **portrait** usa layout vertical (display em cima, teclado embaixo).
+ * Em **landscape** usa layout horizontal (display à esquerda, teclado à direita)
+ * para aproveitar a tela larga e dar altura suficiente às teclas.
  */
 @Composable
 fun Hp12cScreen(
@@ -73,64 +124,184 @@ fun Hp12cScreen(
         event?.let { onEvent(it) }
     }
 
-    CompositionLocalProvider(LocalSkin provides skin) {
+    val configuration = LocalConfiguration.current
+    val isLandscape   = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val tokens        = if (isLandscape) LandscapeTokens else PortraitTokens
+
+    CompositionLocalProvider(
+        LocalSkin    provides skin,
+        LocalLayout  provides tokens,
+    ) {
         // Carcaça externa com gradiente metálico
         Box(
             modifier = modifier
                 .fillMaxSize()
                 .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            skin.body.copy(alpha = 1f),
-                            skin.bodyEdge.copy(alpha = 1f),
-                        ),
+                    Brush.linearGradient(
+                        colors = listOf(skin.body, skin.bodyEdge),
                     ),
-                )
-                .border(1.5.dp, skin.bodyEdge, RoundedCornerShape(0.dp)),
+                ),
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                verticalArrangement = Arrangement.spacedBy(0.dp),
-            ) {
-                // ── Branding HP ──────────────────────────────────────────────
-                HpBrandingBar(onToggleSkin = onToggleSkin)
-                Spacer(Modifier.height(4.dp))
-
-                // ── Visor LCD ────────────────────────────────────────────────
-                Hp12cDisplay(
-                    calcState = calcState,
-                    shift     = shift,
-                    pending   = pending,
-                    isRunning = isRunning,
-                    modifier  = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(8.dp))
-
-                // ── Listagem de programa (modo PRGM) ─────────────────────────
-                val prgmState = calcState.programState
-                if (prgmState is ProgramState.Editing) {
-                    Hp12cProgramList(
-                        memory   = calcState.programMemory,
-                        cursor   = prgmState.cursor,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(0.40f)
-                            .clip(RoundedCornerShape(4.dp)),
-                    )
-                    Spacer(Modifier.height(4.dp))
-                }
-
-                // ── Teclado ──────────────────────────────────────────────────
-                Hp12cKeyboard(
+            if (isLandscape) {
+                LandscapeLayout(
+                    calcState  = calcState,
+                    shift      = shift,
+                    pending    = pending,
+                    isRunning  = isRunning,
                     onKeyPress = onKeyPress,
-                    modifier   = Modifier
-                        .fillMaxWidth()
-                        .weight(if (prgmState is ProgramState.Editing) 0.60f else 1f),
+                    onToggleSkin = onToggleSkin,
+                    tokens     = tokens,
+                    skin       = skin,
+                )
+            } else {
+                PortraitLayout(
+                    calcState  = calcState,
+                    shift      = shift,
+                    pending    = pending,
+                    isRunning  = isRunning,
+                    onKeyPress = onKeyPress,
+                    onToggleSkin = onToggleSkin,
+                    tokens     = tokens,
+                    skin       = skin,
                 )
             }
         }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Layout portrait — display em cima, teclado embaixo
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun PortraitLayout(
+    calcState: CalculatorState,
+    shift: ShiftState,
+    pending: PendingOp,
+    isRunning: Boolean,
+    onKeyPress: (KeyDef) -> Unit,
+    onToggleSkin: () -> Unit,
+    tokens: LayoutTokens,
+    skin: Hp12cSkin,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = tokens.outerPadH, vertical = tokens.outerPadV),
+    ) {
+        HpBrandingBar(onToggleSkin = onToggleSkin)
+        Spacer(Modifier.height(4.dp))
+
+        Hp12cDisplay(
+            calcState = calcState,
+            shift     = shift,
+            pending   = pending,
+            isRunning = isRunning,
+            modifier  = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(6.dp))
+
+        val prgmState = calcState.programState
+        if (prgmState is ProgramState.Editing) {
+            Hp12cProgramList(
+                memory   = calcState.programMemory,
+                cursor   = prgmState.cursor,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(0.35f)
+                    .clip(RoundedCornerShape(4.dp)),
+            )
+            Spacer(Modifier.height(4.dp))
+        }
+
+        Hp12cKeyboard(
+            onKeyPress = onKeyPress,
+            modifier   = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+        )
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Layout landscape — display à esquerda, teclado à direita
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun LandscapeLayout(
+    calcState: CalculatorState,
+    shift: ShiftState,
+    pending: PendingOp,
+    isRunning: Boolean,
+    onKeyPress: (KeyDef) -> Unit,
+    onToggleSkin: () -> Unit,
+    tokens: LayoutTokens,
+    skin: Hp12cSkin,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = tokens.outerPadH, vertical = tokens.outerPadV),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        // Painel esquerdo: branding + display
+        Column(
+            modifier = Modifier
+                .weight(0.30f)
+                .fillMaxHeight(),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            HpBrandingBar(onToggleSkin = onToggleSkin)
+
+            Hp12cDisplay(
+                calcState = calcState,
+                shift     = shift,
+                pending   = pending,
+                isRunning = isRunning,
+                modifier  = Modifier.fillMaxWidth(),
+            )
+
+            // Em modo PRGM, lista de programa aparece abaixo do display
+            val prgmState = calcState.programState
+            if (prgmState is ProgramState.Editing) {
+                Hp12cProgramList(
+                    memory   = calcState.programMemory,
+                    cursor   = prgmState.cursor,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .clip(RoundedCornerShape(4.dp)),
+                )
+            } else {
+                // Logotipo HP discreto na parte inferior do painel
+                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.BottomStart) {
+                    Text(
+                        text       = "hp",
+                        color      = skin.bodyEdge,
+                        fontSize   = 22.sp,
+                        fontStyle  = FontStyle.Italic,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = (-1).sp,
+                    )
+                }
+            }
+        }
+
+        // Divisor vertical sutil
+        Box(
+            modifier = Modifier
+                .width(1.dp)
+                .fillMaxHeight()
+                .background(skin.bodyEdge.copy(alpha = 0.4f)),
+        )
+
+        // Painel direito: teclado ocupa o espaço restante
+        Hp12cKeyboard(
+            onKeyPress = onKeyPress,
+            modifier   = Modifier
+                .weight(0.70f)
+                .fillMaxHeight(),
+        )
     }
 }
 
@@ -146,16 +317,14 @@ private fun HpBrandingBar(onToggleSkin: () -> Unit) {
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment     = Alignment.CenterVertically,
     ) {
-        // "HP 12c Platinum" em itálico — igual à silk-screen da calculadora física
         Text(
-            text       = "HP 12c Platinum",
-            color      = skin.bodyEdge,
-            fontSize   = 11.sp,
-            fontStyle  = FontStyle.Italic,
-            fontWeight = FontWeight.Bold,
+            text          = "HP 12c Platinum",
+            color         = skin.bodyEdge,
+            fontSize      = 11.sp,
+            fontStyle     = FontStyle.Italic,
+            fontWeight    = FontWeight.Bold,
             letterSpacing = 0.5.sp,
         )
-        // Botão de toggle de skin — discreet
         Text(
             text     = "⊞ ${skin.name}",
             color    = skin.bodyEdge,
@@ -179,9 +348,6 @@ private data class KeyResult(
     val pending: PendingOp,
 )
 
-/**
- * Transforma um toque em (evento?, novoShift, novoPendente).
- */
 private fun resolveKey(
     def: KeyDef,
     state: CalculatorState,
@@ -260,8 +426,9 @@ private fun Hp12cDisplay(
     isRunning: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
-    val skin   = LocalSkin.current
-    val engine = remember { CalculatorEngine.Default }
+    val skin    = LocalSkin.current
+    val tokens  = LocalLayout.current
+    val engine  = remember { CalculatorEngine.Default }
 
     val displayText = when {
         isRunning                -> "running..."
@@ -283,7 +450,7 @@ private fun Hp12cDisplay(
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(4.dp))
                 .background(skin.displayBg)
-                .padding(horizontal = 10.dp, vertical = 6.dp),
+                .padding(horizontal = 8.dp, vertical = 5.dp),
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
                 // ── Indicadores de estado ────────────────────────────────
@@ -292,15 +459,15 @@ private fun Hp12cDisplay(
                     horizontalArrangement = Arrangement.Start,
                     verticalAlignment     = Alignment.CenterVertically,
                 ) {
-                    IndicatorLabel("f",     active = shift == ShiftState.F_SHIFT)
-                    Spacer(Modifier.width(5.dp))
-                    IndicatorLabel("g",     active = shift == ShiftState.G_SHIFT)
+                    IndicatorLabel("f",     active = shift == ShiftState.F_SHIFT, size = tokens.displayIndicatorSize)
+                    Spacer(Modifier.width(4.dp))
+                    IndicatorLabel("g",     active = shift == ShiftState.G_SHIFT, size = tokens.displayIndicatorSize)
                     Spacer(Modifier.weight(1f))
-                    IndicatorLabel("BEGIN", active = calcState.financial.mode == TvmMode.BEGIN)
-                    Spacer(Modifier.width(5.dp))
-                    IndicatorLabel("PRGM",  active = calcState.programState is ProgramState.Editing)
-                    Spacer(Modifier.width(5.dp))
-                    IndicatorLabel("RUN",   active = isRunning)
+                    IndicatorLabel("BEGIN", active = calcState.financial.mode == TvmMode.BEGIN, size = tokens.displayIndicatorSize)
+                    Spacer(Modifier.width(4.dp))
+                    IndicatorLabel("PRGM",  active = calcState.programState is ProgramState.Editing, size = tokens.displayIndicatorSize)
+                    Spacer(Modifier.width(4.dp))
+                    IndicatorLabel("RUN",   active = isRunning, size = tokens.displayIndicatorSize)
                 }
 
                 // ── Número principal ─────────────────────────────────────
@@ -309,19 +476,19 @@ private fun Hp12cDisplay(
                     color      = skin.displayText,
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold,
-                    fontSize   = 30.sp,
+                    fontSize   = tokens.displayNumFontSize,
                     textAlign  = TextAlign.End,
                     maxLines   = 1,
                     modifier   = Modifier
                         .fillMaxWidth()
-                        .padding(top = 2.dp),
+                        .padding(top = 2.dp, bottom = 1.dp),
                 )
 
                 // ── Modo (RPN) ───────────────────────────────────────────
                 Text(
                     text       = "RPN",
                     color      = skin.indicatorOff,
-                    fontSize   = 7.sp,
+                    fontSize   = 6.sp,
                     fontFamily = FontFamily.Monospace,
                     modifier   = Modifier.align(Alignment.Start),
                 )
@@ -331,12 +498,12 @@ private fun Hp12cDisplay(
 }
 
 @Composable
-private fun IndicatorLabel(text: String, active: Boolean) {
+private fun IndicatorLabel(text: String, active: Boolean, size: TextUnit = 8.sp) {
     val skin = LocalSkin.current
     Text(
         text       = text,
         color      = if (active) skin.indicatorOn else skin.indicatorOff,
-        fontSize   = 8.sp,
+        fontSize   = size,
         fontWeight = FontWeight.Bold,
     )
 }
@@ -350,16 +517,17 @@ private fun Hp12cKeyboard(
     onKeyPress: (KeyDef) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val tokens = LocalLayout.current
     Column(
         modifier            = modifier,
-        verticalArrangement = Arrangement.spacedBy(2.dp),
+        verticalArrangement = Arrangement.spacedBy(tokens.keyRowSpacing),
     ) {
         KEY_ROWS.forEach { row ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(3.dp),
+                horizontalArrangement = Arrangement.spacedBy(tokens.keyColSpacing),
             ) {
                 row.forEach { def ->
                     Hp12cKeyButton(
@@ -385,7 +553,8 @@ private fun Hp12cKeyButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val skin = LocalSkin.current
+    val skin   = LocalSkin.current
+    val tokens = LocalLayout.current
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
 
@@ -399,16 +568,16 @@ private fun Hp12cKeyButton(
     }
 
     Column(
-        modifier              = modifier,
-        horizontalAlignment   = Alignment.CenterHorizontally,
-        verticalArrangement   = Arrangement.Center,
+        modifier            = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
     ) {
 
         // ── Label f (laranja) — impresso ACIMA da tecla ──────────────────
         Text(
             text      = def.fLabel,
             color     = if (def.fLabel.isNotBlank()) skin.fLabelColor else Color.Transparent,
-            fontSize  = 6.5.sp,
+            fontSize  = tokens.keySubFontSize,
             maxLines  = 1,
             textAlign = TextAlign.Center,
             modifier  = Modifier.fillMaxWidth(),
@@ -419,8 +588,14 @@ private fun Hp12cKeyButton(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp,
-                                         bottomStart = 3.dp, bottomEnd = 3.dp))
+                .clip(
+                    RoundedCornerShape(
+                        topStart    = tokens.keyCorner,
+                        topEnd      = tokens.keyCorner,
+                        bottomStart = (tokens.keyCorner.value * 0.75f).dp,
+                        bottomEnd   = (tokens.keyCorner.value * 0.75f).dp,
+                    ),
+                )
                 .background(keyBg)
                 .border(
                     width = 1.dp,
@@ -431,7 +606,7 @@ private fun Hp12cKeyButton(
                             skin.keyBottomShadow,
                         ),
                     ),
-                    shape = RoundedCornerShape(4.dp),
+                    shape = RoundedCornerShape(tokens.keyCorner),
                 )
                 .clickable(
                     interactionSource = interactionSource,
@@ -439,7 +614,6 @@ private fun Hp12cKeyButton(
                 ) { onClick() },
             contentAlignment = Alignment.Center,
         ) {
-            // Overlay de pressed (clareia ao tocar)
             if (isPressed) {
                 Box(
                     modifier = Modifier
@@ -450,11 +624,11 @@ private fun Hp12cKeyButton(
             Text(
                 text       = def.label,
                 color      = skin.keyLabel,
-                fontSize   = 11.sp,
+                fontSize   = tokens.keyFontSize,
                 fontWeight = FontWeight.Bold,
                 textAlign  = TextAlign.Center,
                 maxLines   = 1,
-                lineHeight = 11.sp,
+                lineHeight = tokens.keyFontSize,
             )
         }
 
@@ -462,7 +636,7 @@ private fun Hp12cKeyButton(
         Text(
             text      = def.gLabel,
             color     = if (def.gLabel.isNotBlank()) skin.gLabelColor else Color.Transparent,
-            fontSize  = 6.5.sp,
+            fontSize  = tokens.keySubFontSize,
             maxLines  = 1,
             textAlign = TextAlign.Center,
             modifier  = Modifier.fillMaxWidth(),
