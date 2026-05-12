@@ -191,6 +191,27 @@ fun Stack.dualOutputOp(f: (stack: Stack) -> Pair<Hp12cDecimal, Hp12cDecimal>): S
 }
 
 /**
+ * Operação de "saída dupla" das teclas estatísticas (`g x̄`, `g s`, `g ŷ,r`, `g x̂,r`).
+ * Escreve dois novos valores diretamente em X e Y **sem descer Z/T** — diferente de
+ * push ou binaryOp, que movem a pilha. Z e T ficam exatamente como estavam.
+ *
+ * `lastX` ← X antigo, `stackLiftEnabled = true`.
+ *
+ * Fonte: `formulas/estatistica.md` §7, observação 1.
+ */
+fun Stack.dualOutputOp(f: (stack: Stack) -> Pair<Hp12cDecimal, Hp12cDecimal>): Stack {
+    val xOld = x
+    val (newX, newY) = f(this)
+    return copy(
+        x = newX,
+        y = newY,
+        lastX = xOld,
+        stackLiftEnabled = true,
+        isEntering = false,
+    )
+}
+
+/**
  * Percent (`%`, `%T`, `Δ%`) — formalmente binária (consome Y e X), mas **não desce a
  * pilha**: Y permanece em Y. Permite a idiomática `300 ENTER 15 % -` = 255 (= 300 − 45).
  *

@@ -1,254 +1,270 @@
-# Funções de calendário (`g M.DY`, `g D.MY`, `g DATE`, `g ΔDYS`)
+# Calendário — DATE, DYS, D.MY / M.DY
 
-> Fontes primárias:
-> - `bpia5314.pdf` (manual oficial HP 12C Platinum), **Seção 2 "Funções de percentagem e calendário"**, sub-seção "Funções de calendário", p. 30-33.
-> - **Apêndice D "Condições de erro"**, p. 195-196 (Erro 8: Calendário).
-> - **Apêndice E "Fórmulas usadas"**, sub-seção "Calendário", p. 200.
+> Fonte de verdade: **manual HP 12C Platinum (bpia5314.pdf), Seção 9, p. 106–113** e
+> **Apêndice D (p. 197)** para condições de Error 8.
+> Toda afirmação com número de página está rastreada a essa fonte.
 
-Este é o terceiro arquivo de fórmulas da skill, depois de `tvm.md`, `transcendentais.md` e `estatistica.md`. Cobre as **4 teclas de calendário** da HP12C — bloco menor que os anteriores em superfície de teclado, mas com complexidade própria por dois motivos: (1) representação de datas como número decimal `mm.ddyyyy` ou `dd.mmyyyy` (sintaticamente "fora do eixo" da pilha numérica usual), (2) duas bases de dias coexistindo simultaneamente (`exato` no visor + `30/360` em Y após `ΔDYS`).
+---
 
-As 4 teclas:
+## 1. Formato de data e codificação decimal
 
-| Tecla         | Combinação    | Função                                                                  |
-|---------------|---------------|-------------------------------------------------------------------------|
-| `M.DY`        | `g M.DY`      | Define formato de data como mês-dia-ano (default da memória contínua).  |
-| `D.MY`        | `g D.MY`      | Define formato de data como dia-mês-ano. Acende indicador `D.MY`.       |
-| `DATE`        | `g DATE`      | Calcula data futura/passada: dado `DT₁` em Y e `n` dias em X, devolve `DT₂` em X com dia da semana. |
-| `ΔDYS`        | `g ΔDYS`      | Calcula dias entre `DT₁` (Y) e `DT₂` (X) — exato em X, comercial em Y. |
+A HP 12C Platinum suporta dois formatos de data:
 
-Nenhuma das 4 toca registradores financeiros (`n`, `i`, `PV`, `PMT`, `FV`) nem memórias do usuário (`R0..R9`, `Ri`). Mexem apenas em pilha (X, Y, Z, T, LASTx) e — no caso de `M.DY`/`D.MY` — num **flag persistente** novo: `dateFormat: DateFormat`.
+| Modo | Codificação | Exemplo (30 jun 1994) |
+|---|---|---|
+| **M.DY** (padrão) | `MM.DDYYYY` | `6.301994` |
+| **D.MY** | `DD.MMYYYY` | `30.061994` |
 
-## 1. Convenções e notação
+### 1.1 Regra de codificação
 
-Datas válidas: **15 outubro 1582 ≤ DT ≤ 25 novembro 4046** (manual p. 30). Fora desse intervalo, qualquer operação de calendário dispara **Erro 8**.
-
-A representação numérica de uma data segue um dos dois formatos:
-
-- **`M.DY`** (mês-dia-ano): número decimal `mm.ddyyyy` — parte inteira é o mês (1-2 dígitos), depois ponto decimal, dois dígitos do dia, quatro dígitos do ano.
-- **`D.MY`** (dia-mês-ano): número decimal `dd.mmyyyy` — parte inteira é o dia (1-2 dígitos), depois ponto decimal, dois dígitos do mês, quatro dígitos do ano.
-
-Exemplos canônicos do manual (p. 31), 7 de abril de 2004:
-
-| Formato ativo | Tecla digitada | Visor      |
-|---------------|----------------|------------|
-| `M.DY`        | `4.072004`     | `4,072004` |
-| `D.MY`        | `7.042004`     | `7,042004` |
-
-A regra de leitura é estritamente posicional — não há detecção heurística. Em `M.DY`, o dia precisa ter **dois** dígitos (escrever `4.72004` para 7 de abril dá `0.72004`, que seria interpretado como mês 0 e dispararia Erro 8).
-
-A engine carrega `dateFormat: DateFormat = DateFormat.M_DY` em `CalculatorState`, com persistência via memória contínua. `f CLEAR REG`, `f CLEAR FIN`, etc. **não** alteram esse flag — só a re-inicialização da memória contínua o devolve a `M_DY` (manual p. 31, "Memória Contínua").
-
-Ao longo deste documento, `DT₁`/`DT₂` denotam datas (objeto `(mm, dd, yyyy)` decodificado), e `f(DT)` denota a função de contagem de dias do Apêndice E p. 200, definida abaixo.
-
-## 2. Decodificação `string-numérico → (mm, dd, yyyy)`
-
-Algoritmo na engine:
-
-1. Receber `x` da pilha como `Hp12cDecimal` (ex.: `4.072004`).
-2. Separar parte inteira `int(x)` e parte fracionária `frac(x)`.
-3. Conforme `dateFormat`:
-   - `M.DY`: `mm = int(x)`, `dd = int(frac(x) · 100)`, `yyyy = int(frac(x) · 10⁶) mod 10⁴`.
-   - `D.MY`: `dd = int(x)`, `mm = int(frac(x) · 100)`, `yyyy = int(frac(x) · 10⁶) mod 10⁴`.
-4. Validar: `1 ≤ mm ≤ 12`; `1 ≤ dd ≤ daysInMonth(mm, yyyy)`; `1582 ≤ yyyy ≤ 4046` (com refinamento para o limite `15 oct 1582` e `25 nov 4046`).
-5. Falha em qualquer validação → **Erro 8** ("A data está no formato errado ou não existe", manual p. 195).
-
-`daysInMonth` usa a regra de bissexto **gregoriana** (yyyy divisível por 4, exceto seculares não divisíveis por 400). Isso é **diferente** da fórmula `f(DT)` do Apêndice E, que usa `INT(z/4)` puro (regra juliana proléptica). Ver §6 abaixo — a divergência é intencional e calibrada para que `ΔDYS` produza diferenças corretas em datas modernas (pós-1900) apesar de `f` não ser um Julian Day "verdadeiro".
-
-## 3. Fórmula `f(DT)` — base de dias exatos (Apêndice E p. 200)
-
-Fórmula canônica:
+Para **M.DY**: o valor digitado é `MM.DDYYYY`, onde:
+- parte inteira = mês (1–12)
+- parte decimal = seis dígitos `DDYYYY`: dia (2 dígitos, com zero à esquerda se necessário) + ano (4 dígitos)
 
 ```
-f(DT) = 365 · yyyy + 31 · (mm − 1) + dd + INT(z / 4) − x
+6.301994  →  mês=6, decimal=0.301994 × 10^6 = 301994  →  dia=30, ano=1994
+1.011994  →  mês=1, decimal=0.011994 × 10^6 = 011994  →  dia=01, ano=1994
 ```
 
-onde `INT(·)` é parte inteira (truncar em direção a zero) e:
-
-- Se `mm ≤ 2`:    `x = 0`,                          `z = yyyy − 1`
-- Se `mm > 2`:    `x = INT(0.4 · mm + 2.3)`,        `z = yyyy`
-
-A "constante mágica" `INT(0.4 · mm + 2.3)` é uma tabela compacta para o offset de dias acumulados de meses anteriores, calibrada para que `f(DT)` seja monotônica e produza `f(DT₂) − f(DT₁) = (dias entre as datas)` para datas modernas:
-
-| mm  | 0.4·mm + 2.3 | INT  | dias dos meses anteriores − 31·(mm−1) |
-|-----|--------------|------|---------------------------------------|
-| 3   | 3.5          | 3    | 59 − 62 = −3                          |
-| 4   | 3.9          | 3    | 90 − 93 = −3                          |
-| 5   | 4.3          | 4    | 120 − 124 = −4                        |
-| 6   | 4.7          | 4    | 151 − 155 = −4                        |
-| 7   | 5.1          | 5    | 181 − 186 = −5                        |
-| 8   | 5.5          | 5    | 212 − 217 = −5                        |
-| 9   | 5.9          | 5    | 243 − 248 = −5                        |
-| 10  | 6.3          | 6    | 273 − 279 = −6                        |
-| 11  | 6.7          | 6    | 304 − 310 = −6                        |
-| 12  | 7.1          | 7    | 334 − 341 = −7                        |
-
-Os meses 1 e 2 são tratados separadamente (`x = 0`) e o ajuste de leap year sai pelo `z = yyyy − 1` (a soma `INT(z/4)` então conta o ano corrente como "não bissexto" em jan/fev, decisão correta porque o dia 29-fev ainda não passou).
-
-**Validação numérica** (manual p. 32):
-- `f(14 maio 2004) = 365·2004 + 31·4 + 14 + INT(2004/4) − 4 = 732095`
-- `f(11 set 2004) = 365·2004 + 31·8 + 11 + INT(2004/4) − 5 = 732215`
-- `ΔDYS = 732215 − 732095 = 120` ✓
-
-## 4. Fórmula `DIAS` — base 30/360 (ano comercial, Apêndice E p. 200)
+Para **D.MY**: o valor digitado é `DD.MMYYYY`, onde:
+- parte inteira = dia (1–31)
+- parte decimal = seis dígitos `MMYYYY`: mês (2 dígitos) + ano (4 dígitos)
 
 ```
-DIAS = f₃₀(DT₂) − f₃₀(DT₁)
-f₃₀(DT) = 360 · yyyy + 30 · mm + z
+30.061994  →  dia=30, decimal=0.061994 × 10^6 = 061994  →  mês=06, ano=1994
 ```
 
-onde `z` depende do papel da data (anterior `DT₁` ou posterior `DT₂`) e do dia do mês:
+### 1.2 Decodificação em código
 
-**Para `f₃₀(DT₁)` (data anterior):**
-- Se `dd₁ = 31`:   `z = 30`
-- Senão:          `z = dd₁`
+```kotlin
+// Extrai (dia, mês, ano) de um Hp12cDecimal no formato HP
+data class HpDate(val day: Int, val month: Int, val year: Int)
 
-**Para `f₃₀(DT₂)` (data posterior):**
-- Se `dd₂ = 31` e `dd₁ ∈ {30, 31}`:   `z = 30`
-- Se `dd₂ = 31` e `dd₁ < 30`:         `z = dd₂` (ou seja, 31)
-- Se `dd₂ < 31`:                      `z = dd₂`
-
-A assimetria entre as duas regras é a **convenção 30E/360 ISDA-like com tratamento especial de fim-de-mês**: o dia 31 do mês anterior é "encolhido" para 30 (porque o mês comercial tem 30 dias), mas o dia 31 do mês posterior só é encolhido se a data anterior também era fim-de-mês — caso contrário, vale literalmente como 31, "estendendo" o intervalo.
-
-Fevereiro recebe tratamento implícito: o "mês comercial" tem 30 dias mesmo em fevereiro, então a base 30/360 nunca encurta fevereiro nem distingue ano bissexto. Isso é fonte recorrente de discrepância de ~5 dias por ano em juros simples comerciais vs exatos.
-
-**Validação numérica** (manual p. 33, com correção de errata em §7.1):
-- Exemplo: 3 jun 2004 a 14 out 2005 (manual originalmente imprime "10.152005" como tecla, mas o resultado `498` corresponde a 14 out — ver §7.1).
-- `f(3 jun 2004) = 732115`,  `f(14 out 2005) = 732613` → ΔDYS = `498` ✓
-- `f₃₀(3 jun 2004) = 360·2004 + 30·6 + 3 = 721623`
-- `f₃₀(14 out 2005) = 360·2005 + 30·10 + 14 = 722114` → DIAS = `491` ✓
-
-## 5. Tecla `DATE` — data futura ou passada
-
-Procedimento (manual p. 31):
-
-1. Digitar `DT₁` e apertar `ENTER` (`DT₁` agora em Y).
-2. Digitar `n` (número de dias). Se `DT₂` está no passado, apertar `CHS`.
-3. Apertar `g DATE`.
-
-Resultado em X: `DT₂ = DT₁ + n dias`, **em formato especial** que codifica também o dia da semana. O visor mostra:
-
-```
-dd,mm,yyyy d
+fun decodeDate(value: Hp12cDecimal, isMDY: Boolean): HpDate {
+    val intPart = value.toLong().toInt()                   // MM (M.DY) ou DD (D.MY)
+    val fracPart = ((value - Hp12cDecimal.of(intPart)) *   // DDYYYY ou MMYYYY como inteiro
+                    Hp12cDecimal.of(1_000_000)).toLong().toInt()
+    val hi = fracPart / 10_000   // DD (M.DY) ou MM (D.MY)
+    val lo = fracPart % 10_000   // YYYY
+    return if (isMDY) HpDate(day = hi, month = intPart, year = lo)
+           else       HpDate(day = intPart, month = hi, year = lo)
+}
 ```
 
-— meses, dias e ano sempre separados por vírgulas (independente do separador de milhares ativo via `f .`); o último dígito (após espaço) é o dia da semana, com convenção HP `1 = segunda-feira ... 7 = domingo`. Esse formato existe **só para a saída de `DATE`** — não é a representação de pilha. Internamente o `x` carrega um número que decodificado pelo formato `dateFormat` ativo dá `(mm, dd, yyyy)` consistente.
+### 1.3 Alternância de formato
 
-**Algoritmo da engine:**
+- `g D.MY` → modo D.MY (dia.mês.ano)
+- `g M.DY` → modo M.DY (mês.dia.ano) — padrão de fábrica
 
-1. Decodificar `DT₁` em Y conforme `dateFormat` (validar; falha → Erro 8).
-2. Ler `n` em X (deve ser inteiro; **caso `n` não inteiro**: a HP física aceita e trunca pela parte inteira — ver §7.2).
-3. Calcular `f(DT₂) = f(DT₁) + n`.
-4. Inverter `f`: encontrar `(mm₂, dd₂, yyyy₂)` tal que `f(mm₂, dd₂, yyyy₂) = f(DT₂)`.
-5. Validar limite: se `DT₂ < 15 oct 1582` ou `DT₂ > 25 nov 4046` → Erro 8 ("Quando se tenta adicionar dias além da capacidade de datas da calculadora", manual p. 195).
-6. Calcular dia da semana: `dow(DT₂) = ((f(DT₂) + 5) mod 7); se dow == 0, dow = 7`.
-7. Comportamento da pilha (saída dupla peculiar): X recebe a data + dia da semana codificada; Y/Z/T preservados; LASTx ← x antigo (n).
+O modo é estado global da calculadora (`CalculatorState.dateFormat: DateFormat`).
+`DateFormat.MDY` é o padrão em `CalculatorEngine.InitialState`.
 
-**Inversão de `f` na prática.** Como `f` é monotônica crescente, qualquer um dos seguintes funciona:
+---
 
-- **Estimativa + ajuste**: `yyyy ≈ INT(target / 365.25) + offset`; iterar mm/dd dentro do ano. Tipicamente 1-2 iterações.
-- **Algoritmo de calendário "real"**: converter `DT₁` para Julian Day verdadeiro, somar `n`, converter de volta — funciona, mas então `DT₂` pode discordar de `f` em ~1 dia ao redor de séculos não-divisíveis-por-400 (ver §6).
+## 2. Tecla DATE (`f DATE`) — data resultante
 
-A engine **deve** usar a inversão da própria `f` da HP (não Julian Day verdadeiro), porque `f` é a referência. A consequência prática: dias da semana de datas anteriores a 1900 podem divergir do calendário gregoriano histórico — comportamento documentado e idêntico à HP física (manual p. 32, nota de rodapé 4).
-
-**Validação numérica** (manual p. 32):
-- `14.052004 ENTER 120 g DATE` → `11,09,2004 6` (11 set 2004, sábado).
-- `f(14 mai 2004) + 120 = 732215` → inverter para `(9, 11, 2004)` ✓
-- `dow = ((732215 + 5) mod 7) = 1`; ajuste `1 → 1` (segunda? não): `(732215 mod 7 = 1) + 5 = 6` (sábado). ✓
-
-## 6. Dia da semana (`dow`)
-
-Dedução baseada em validação contra os exemplos do manual:
+**Sequência de entrada (manual, p. 107):**
 
 ```
-dow(DT) = ((f(DT) + 5) mod 7)
-se dow == 0:  dow = 7
+[data inicial]  ENTER  [nº de dias]  f DATE
 ```
 
-Convenção HP (manual p. 32): `1 = segunda-feira, 2 = terça, ..., 6 = sábado, 7 = domingo`.
+- `nº de dias` positivo = data futura
+- `nº de dias` negativo = data passada
 
-**Validação contra exemplo canônico**: 11 set 2004 era um sábado. `f = 732215; (732215 + 5) mod 7 = 732220 mod 7 = 6` ✓.
+**Saída (após `f DATE`):**
 
-**Limitação documentada (manual p. 32 nota 4)**: `f(DT)` da HP usa `INT(z/4)` "Juliano proléptico" — não distingue anos seculares não-divisíveis-por-400 (1700, 1800, 1900) do regime gregoriano. Para datas pós-1900, `dow` coincide com o calendário civil padrão; para datas anteriores, a HP entrega o `dow` da extrapolação juliana, que pode diferir do registro histórico (especialmente datas anteriores à adoção gregoriana em cada país — Inglaterra: 14 set 1752; outros: variável). A engine reproduz literalmente esse comportamento.
+| Registrador | Antes | Depois |
+|---|---|---|
+| X | n (nº de dias) | data resultante (no modo atual M.DY ou D.MY) |
+| Y | data inicial | número do dia da semana (1=Seg … 7=Dom) |
+| Z | Z₀ | Z₀ |
+| T | T₀ | T₀ |
+| LAST X | L₀ | n antigo (X antes de `f DATE`) |
 
-## 7. Ambiguidades e idiossincrasias
+**Codificação do dia da semana** `(manual, p. 107)`:
 
-### 7.1 Errata do exemplo da p. 33 do manual
+| Código | Dia |
+|---|---|
+| 1 | Segunda-feira |
+| 2 | Terça-feira |
+| 3 | Quarta-feira |
+| 4 | Quinta-feira |
+| 5 | Sexta-feira |
+| 6 | Sábado |
+| 7 | Domingo |
 
-O exemplo da seção "Número de dias entre datas" (p. 33) afirma textualmente "3 de junho de 2004 a 14 de outubro de 2005" e reporta resultados `498,00` (exato) e `491,00` (comercial). Mas a tecla mostrada é `10.152005 g ΔDYS` — que em formato M.DY é `15 outubro 2005`, não 14. Verificação:
+### 2.1 Exemplo canônico (manual, p. 107)
 
-- Com `dd₂ = 15`: `f(15 out 2005) − f(3 jun 2004) = 732614 − 732115 = 499`; comercial = `492`.
-- Com `dd₂ = 14`: `f(14 out 2005) − f(3 jun 2004) = 732613 − 732115 = 498`; comercial = `491`.
+> Qual é a data 90 dias após 30 de junho de 1994?
 
-O resultado `498 / 491` corresponde a **Oct 14**, não Oct 15. A keystroke impressa é typo do manual (provavelmente devia ser `10.142005`). Os vetores de teste em `test-vectors/calendario-vectors.json` registram **as duas variações** (14 e 15) e identificam claramente qual confirma o resultado do livro — o de Oct 14.
+```
+[em M.DY, FIX 6]
+6.301994  ENTER  90  f DATE
+→  X = 9.281994  (28 set 1994)
+   Y = 3          (quarta-feira)
+```
 
-### 7.2 Argumento `n` não inteiro em `DATE`
+**Verificação:** JDN(30 jun 1994) = 2449534. JDN(28 set 1994) = 2449624. Diferença = 90 ✓.
+28/09/1994: JDN mod 7 = 2 → HP code = 3 (quarta) ✓.
 
-O manual não documenta o que acontece se `n` (número de dias) for fracionário. A HP física **trunca** silenciosamente (i.e., usa `INT(n)`). A engine reproduz: o reducer chama `n.intValue()` antes do cálculo; nenhum erro é disparado. Isso é consistente com `[g][INT]` aplicado ao argumento.
+---
 
-`n` negativo: o manual indica explicitamente "se a outra data estiver no passado, aperte CHS" — então `n < 0` é input legítimo. A engine deve aceitar e calcular `DT₂ = DT₁ + n` com aritmética assinada normal.
+## 3. Tecla DYS (`f DYS`) — número de dias entre duas datas
 
-### 7.3 Pilha após `ΔDYS` — cohabitação exato/comercial
+**Sequência de entrada (manual, p. 108):**
 
-Após `g ΔDYS`, X tem dias exatos e **Y tem dias comerciais (30/360)**. O usuário acessa o comercial via `x⇆y`. Pressionar `x⇆y` de novo restaura X (manual p. 32).
+```
+[data anterior]  ENTER  [data posterior]  f DYS
+```
 
-Isso é uma **saída dupla** análoga à de `g x̄`/`g s` (estatística), mas com dois valores **diferentes** em X e Y — não a mesma operação devolvendo dois aspectos correlatos. Z/T são preservados sticky. LASTx recebe o `dd.mmyyyy` (ou `mm.ddyyyy`) consumido.
+**Saída (após `f DYS`):**
 
-Pergunta de design: o flag `rInvalid` do `StatisticalState` foi necessário para `x̂/ŷ`. **Aqui não há equivalente** — ambas as bases (exato e comercial) são sempre computáveis dadas duas datas válidas, sem casos patológicos. Logo nenhum flag novo precisa ser adicionado a `CalculatorState`.
+| Registrador | Antes | Depois |
+|---|---|---|
+| X | data posterior | número de dias (inteiro, ≥ 0 se data2 > data1) |
+| Y | data anterior | data posterior (Y₀ da pilha antes da op, i.e., o X antigo) |
+| Z | Z₀ | Z₀ |
+| T | T₀ | T₀ |
+| LAST X | L₀ | data posterior (X antes de `f DYS`) |
 
-### 7.4 `f CLEAR FIN` e `f CLEAR REG` não tocam o `dateFormat`
+**Fórmula:** `DYS = JDN(data2) − JDN(data1)`, onde JDN é o Número de Dia Juliano.
 
-Como mencionado na §1, somente a re-inicialização da memória contínua devolve `dateFormat` para `M_DY`. As 4 teclas `CLEAR` (`f CLEAR FIN`, `f CLEAR REG`, `f CLEAR Σ`, `f CLEAR PRGM`) preservam o flag — é estado de configuração do usuário, não memória de cálculo.
+O resultado é sempre **dias corridos** (calendário gregoriano real, não base 360).
+Se `data1 > data2`, o resultado é negativo.
 
-### 7.5 Limite superior `25 nov 4046`
+### 3.1 Exemplo canônico (manual, p. 108)
 
-O limite superior é estranho — não é nenhum aniversário óbvio. Vem da combinação de: (a) range de `f(DT)` cabendo em mantissa BCD de 10 dígitos sem overflow; (b) cálculo `f(DT) + n` com `n` máximo razoável também cabendo. O limite inferior `15 out 1582` é histórico (adoção do calendário gregoriano).
+> Quantos dias entre 30 de junho de 1994 e 28 de setembro de 1994?
 
-A engine valida ambos os limites antes de qualquer cálculo, inclusive na inversão de `DATE` — se a inversão produzir um ano `> 4046` ou data `> 25 nov 4046`, dispara Erro 8 mesmo que `DT₁` e `n` fossem válidos isoladamente.
+```
+[em M.DY, FIX 2]
+6.301994  ENTER  9.281994  f DYS
+→  X = 90.00
+```
 
-### 7.6 Diferenças entre `M.DY` e `D.MY` durante a digitação
+---
 
-Trocar `dateFormat` **não** "re-interpreta" um número já digitado em pilha. Apenas afeta: (a) parsing futuro; (b) renderização de saídas via `DATE`. Conseqüência prática: se o usuário digita `7.042004` em modo `M.DY` (= mês 7 dia 04), depois aperta `g D.MY`, o número `7.042004` em X é o mesmo, mas se ele agora apertar `g DATE` para uma operação, será decodificado como `D.MY` → dia 7 mês 04 ano 2004 = mesma data por coincidência. Trocar formato no meio de uma sessão é caminho seguro para erro do usuário — engine não trata como inválido, só decodifica o que está em pilha conforme o flag corrente.
+## 4. Algoritmo Gregoriano
 
-## 8. Resumo das condições de erro (Erro 8)
+### 4.1 Calendário Gregoriano — dias em cada mês
 
-Coletadas do Apêndice D p. 195-196:
+```
+Jan=31, Fev=28/29, Mar=31, Abr=30, Mai=31, Jun=30,
+Jul=31, Ago=31, Set=30, Out=31, Nov=30, Dez=31
+```
 
-| Operação        | Condição                                                        | Código    |
-|-----------------|-----------------------------------------------------------------|-----------|
-| `ΔDYS`, `DATE`  | "A data está no formato errado ou não existe."                  | Error 8   |
-| `DATE`          | "Quando se tenta adicionar dias além da capacidade da calc."    | Error 8   |
+**Ano bissexto** se:
+- divisível por 4 **E**
+- não divisível por 100 **OU** divisível por 400
 
-A primeira condição cobre:
-- `mm ∉ [1, 12]`
-- `dd ∉ [1, daysInMonth(mm, yyyy)]` (incluindo 29-fev em ano não bissexto)
-- `yyyy ∉ [1582, 4046]`
-- Caso fronteira: `15 out 1582` é a primeira data válida, `25 nov 4046` a última.
+```
+2000: bissexto (÷400) ✓    2100: não-bissexto (÷100, ÷400 não) ✗
+1900: não-bissexto ✗        2004: bissexto ✓
+```
 
-A segunda condição cobre apenas `DATE`: se `f(DT₁) + n` cair fora do range válido após a inversão.
+### 4.2 Número de Dia Juliano (JDN) — implementação em Kotlin puro
 
-## 9. Comportamento da pilha (resumo)
+**Gregoriano → JDN** (algoritmo de Jean Meeus, inteiros puros, sem `java.time`):
 
-Detalhes completos em `referencias/stack-behavior.md`. Resumo das 4 teclas:
+```kotlin
+fun gregorianToJDN(day: Int, month: Int, year: Int): Long {
+    val a = (14 - month) / 12
+    val y = year + 4800 - a
+    val m = month + 12 * a - 3
+    return day + (153L * m + 2) / 5 +
+           365L * y + y / 4 - y / 100 + y / 400 - 32045L
+}
+```
 
-| Tecla     | Efeito na pilha                                                                                    |
-|-----------|----------------------------------------------------------------------------------------------------|
-| `M.DY`    | Pilha intacta. Atualiza `dateFormat` no estado.                                                    |
-| `D.MY`    | Pilha intacta. Atualiza `dateFormat` no estado.                                                    |
-| `DATE`    | X ← (data com dia da semana embutido), Y/Z/T preservados, LASTx ← x antigo (n).                    |
-| `ΔDYS`    | X ← dias exatos, Y ← dias comerciais (30/360), Z/T preservados sticky, LASTx ← x antigo (DT₂).     |
+**JDN → Gregoriano**:
 
-`ΔDYS` é a **segunda** tecla "saída dupla simultânea X+Y" da engine após o bloco de estatísticas (`Mean`, `StdDev`, `PredictY`, `PredictX`). O padrão de implementação é o mesmo registrado em `formulas/estatistica.md` §7: `state.copy(stack = stack.copy(x = exato, y = comercial))` direto no reducer, sem primitiva nova em `StackOps.kt`.
+```kotlin
+fun jdnToGregorian(jdn: Long): HpDate {
+    val a = jdn + 32044L
+    val b = (4 * a + 3) / 146097L
+    val c = a - (146097L * b) / 4
+    val d = (4 * c + 3) / 1461L
+    val e = c - (1461L * d) / 4
+    val m = (5 * e + 2) / 153L
+    val day   = (e - (153L * m + 2) / 5 + 1).toInt()
+    val month = (m + 3 - 12L * (m / 10)).toInt()
+    val year  = (100L * b + d - 4800L + m / 10).toInt()
+    return HpDate(day, month, year)
+}
+```
 
-`M.DY` e `D.MY` são as **primeiras** teclas da engine que mexem em flag persistente no `CalculatorState` sem tocar pilha — comportamento análogo ao de `STO EEX` (`ToggleCompoundFractionFlag`), só que com um flag enumerado (`DateFormat`) em vez de booleano.
+**Dia da semana a partir do JDN**:
 
-## 10. Decisões arquiteturais resumidas
+```kotlin
+fun dayOfWeekHP(jdn: Long): Int = ((jdn % 7) + 1).toInt()
+// JDN mod 7: 0=Seg, 1=Ter, 2=Qua, 3=Qui, 4=Sex, 5=Sáb, 6=Dom
+// HP code:    1=Seg, 2=Ter, 3=Qua, 4=Qui, 5=Sex, 6=Sáb, 7=Dom
+```
 
-1. **`dateFormat` como enum em `CalculatorState`**: novo campo `val dateFormat: DateFormat = DateFormat.M_DY`. Sealed class `DateFormat` com objects `M_DY` e `D_MY` — permite `when` exaustivo no decodificador. Default `M_DY` consistente com manual p. 31 ("Se a Memória Contínua for reinicializada, o formato de data será configurado para mês-dia-ano.").
+### 4.3 Tabela de referência — JDN e dias da semana para datas de teste
 
-2. **Sem novo `Hp12cError`**: a Fase 1 já tem `Hp12cError.InvalidDate` e `Hp12cError.DateOutOfRange`, ambos `(8, ...)`. Reusamos os dois objects existentes — `InvalidDate` para falhas de validação de formato/existência, `DateOutOfRange` para overflow do limite na inversão de `DATE`.
+| Data | JDN | JDN mod 7 | HP code | Dia |
+|---|---|---|---|---|
+| 30 jun 1994 | 2449534 | 3 | 4 | Quinta |
+| 28 set 1994 | 2449624 | 2 | 3 | Quarta |
+| 01 jan 2000 | 2451545 | 5 | 6 | Sábado |
+| 29 fev 2000 | 2451604 | 1 | 2 | Terça |
+| 01 mar 2000 | 2451605 | 2 | 3 | Quarta |
+| 01 jan 2001 | 2451911 | 0 | 1 | Segunda |
+| 28 fev 2001 | 2451969 | 2 | 3 | Quarta |
+| 01 mar 2001 | 2451970 | 3 | 4 | Quinta |
+| 01 jan 2002 | 2452276 | 1 | 2 | Terça |
 
-3. **Inversão de `f`**: implementação iterativa (estima ano, ajusta mês, ajusta dia) será o caminho na fase de implementação; performance trivial (≤10 operações aritméticas por chamada).
+---
 
-4. **`f(DT)` em `BigDecimal`**: a fórmula tem multiplicações por `yyyy ≤ 4046`, somas pequenas — cabe em `Long`, mas mantemos `Hp12cDecimal` para consistência com a engine. MC(10, HALF_EVEN) é mais que suficiente — números nunca passam de ~10⁶.
+## 5. Condições de Error 8 `(manual, Apêndice D, p. 197)`
 
-5. **Sem novo flag transitório em `CalculatorState`**: ao contrário de `statisticalState.rInvalid`, o calendário não tem ambiguidade dependente de operação anterior. Pilha é suficiente para carregar o resultado dual de `ΔDYS` (X e Y).
+| Condição | Exemplo |
+|---|---|
+| Mês fora de [1, 12] | 13.011994 (mês 13) |
+| Dia fora de [1, máx do mês] | 2.301994 (fev 30), 4.311994 (abr 31) |
+| Fevereiro 29 em ano não-bissexto | 2.292001 |
+| Ano < 1 ou > 9999 | datas fora do Calendário Gregoriano |
+| Data anterior ao corte Gregoriano (15 out 1582) | 10.141582 ou anterior |
+
+A validação ocorre **antes** do cálculo: se a data de entrada já é inválida, Error 8 imediato.
+Se a data resultante de `f DATE` for inválida (ex.: adicionar dias levaria além de 9999), também Error 8.
+
+---
+
+## 6. Formato de display para datas
+
+A HP 12C **não** força FIX 6 automaticamente para resultados de data. O resultado é armazenado em X como `Hp12cDecimal` normal e formatado conforme a configuração corrente de display `(manual, p. 107 — nota)`.
+
+**Prática recomendada:** usar FIX 6 ao trabalhar com datas (6 casas decimais = `DDYYYY`).
+Com FIX 2, o ano seria perdido (mostraria só `9.28` em vez de `9.281994`).
+
+**Implementação:** não há lógica especial no `DisplayFormatter` para datas — a responsabilidade é do usuário de ter FIX 6 configurado. Os vetores de teste usam `format: "FIX 6"` por convenção.
+
+---
+
+## 7. Ambiguidades conhecidas
+
+### §7.1 — Y após `f DATE`: data inicial ou dia-da-semana?
+
+O manual p. 107 afirma explicitamente: Y = dia da semana (1–7) após `f DATE`.
+Não é a data inicial — a data inicial foi consumida como operando.
+**Decisão:** implementar Y = código do dia da semana, inteiro de 1 a 7.
+
+### §7.2 — Y após `f DYS`: data posterior ou data anterior?
+
+Após `f DYS`, Y contém a data que estava em X antes da operação (a data posterior), ou a data original que estava em Y (a data anterior)?
+O comportamento canônico de operação binária na HP 12C: X antigo vai para LAST X, e o Y original (data anterior) sobe para Y via drop, mas `f DYS` não é uma operação binária padrão que desce a pilha — ela é mais parecida com uma operação que gera novo X sem descer Z/T.
+
+Comportamento mais provável baseado no padrão HP: Y = data posterior (o X antigo), Z e T inalterados. **Verificar em hardware real.**
+
+### §7.3 — Corte gregoriano: 15 out 1582 ou 4 out 1582?
+
+A reforma gregoriana ocorreu em datas diferentes por país. O manual HP 12C não especifica o corte exato para Error 8, mas usa o padrão internacional: **15 de outubro de 1582** (primeiro dia no novo calendário). Datas de 1 jan a 14 out 1582 são ambíguas (calendário juliano vs gregoriano). O simulador usa 15 out 1582 como limite inferior.
+
+### §7.4 — Exibição de dias da semana com FIX 6
+
+O código do dia (ex.: 3 para quarta) é exibido com FIX 6 como "3.000000".
+Ao ler Y após `f DATE`, o usuário vê "3.000000" mas significa quarta-feira.
+Isso é normal na HP 12C — o significado é contextual.
