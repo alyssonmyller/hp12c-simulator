@@ -1,6 +1,5 @@
 package com.arcom.hp12c.android.ui
 
-import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 
@@ -19,21 +18,25 @@ data class Hp12cSkin(
     val name: String,
 
     // Corpo externo
-    val body: Color,
+    val body:       Color,
+    val bodyEdge:   Color,   // borda/aresta lateral — sombra perimetral
 
     // Visor LCD
-    val displayBg:    Color,
-    val displayText:  Color,
-    val indicatorOn:  Color,
-    val indicatorOff: Color,
+    val displayBezel:  Color,   // moldura escura ao redor do LCD
+    val displayBg:     Color,   // fundo do painel LCD
+    val displayText:   Color,
+    val indicatorOn:   Color,
+    val indicatorOff:  Color,
 
     // Teclas — fundos
-    val keyNormal:    Color,
-    val keyFinancial: Color,
-    val keyF:         Color,
-    val keyG:         Color,
-    val keyOn:        Color,
-    val keyEnter:     Color,
+    val keyNormal:       Color,
+    val keyFinancial:    Color,
+    val keyF:            Color,
+    val keyG:            Color,
+    val keyOn:           Color,
+    val keyEnter:        Color,
+    val keyTopHighlight: Color,  // reflexo superior que dá efeito 3D
+    val keyBottomShadow: Color,  // sombra inferior que dá profundidade
 
     // Textos
     val keyLabel:    Color,
@@ -47,42 +50,58 @@ data class Hp12cSkin(
 
 object Hp12cSkins {
 
-    /** Replica a HP 12C Platinum física (dourado/champanhe, LCD verde). */
+    /**
+     * HP 12C Platinum — carcaça prateada/metálica, LCD verde-escuro fosforescente,
+     * teclas pretas com labels laranja (f) e azul (g).
+     * Referência visual: HP 12C Platinum física + screenshot do app de referência.
+     */
     val Classic = Hp12cSkin(
-        name         = "Classic",
-        body         = Color(0xFFC4A44A),
-        displayBg    = Color(0xFF1A2C1A),
-        displayText  = Color(0xFF90E050),
-        indicatorOn  = Color(0xFF90E050),
-        indicatorOff = Color(0xFF2A402A),
-        keyNormal    = Color(0xFF2C2C2C),
-        keyFinancial = Color(0xFF6A5828),
-        keyF         = Color(0xFFCC7700),
-        keyG         = Color(0xFF1F55BB),
-        keyOn        = Color(0xFFAA1111),
-        keyEnter     = Color(0xFF3A3A3A),
-        keyLabel     = Color(0xFFFFFFFF),
-        fLabelColor  = Color(0xFFFFAA44),
-        gLabelColor  = Color(0xFF88AAFF),
+        name             = "Platinum",
+        // Corpo
+        body             = Color(0xFF9E9EA2),   // prata metálico (HP Platinum)
+        bodyEdge         = Color(0xFF6A6A6E),   // aresta mais escura
+        // Display
+        displayBezel     = Color(0xFF1A1A1A),   // moldura LCD quase preta
+        displayBg        = Color(0xFF1E2A18),   // fundo LCD verde muito escuro
+        displayText      = Color(0xFF92D040),   // fósforo verde LCD
+        indicatorOn      = Color(0xFF92D040),
+        indicatorOff     = Color(0xFF2C3C22),
+        // Teclas
+        keyNormal        = Color(0xFF1C1C1C),   // preto grafite
+        keyFinancial     = Color(0xFF242420),   // levemente mais quente (TVM row)
+        keyF             = Color(0xFFC05800),   // laranja HP
+        keyG             = Color(0xFF0055AA),   // azul HP
+        keyOn            = Color(0xFF2A2A2A),   // cinza escuro (ON é discreet)
+        keyEnter         = Color(0xFF1C1C1C),   // igual normal
+        keyTopHighlight  = Color(0x28FFFFFF),   // reflexo sutil no topo da tecla
+        keyBottomShadow  = Color(0x44000000),   // sombra na base
+        // Texto
+        keyLabel         = Color(0xFFFFFFFF),
+        fLabelColor      = Color(0xFFFF8C00),   // labels laranja acima das teclas
+        gLabelColor      = Color(0xFF55AAFF),   // labels azul abaixo das teclas
     )
 
     /** Escuro/flat inspirado em Material3 Dark Theme. */
     val Modern = Hp12cSkin(
-        name         = "Modern",
-        body         = Color(0xFF111111),
-        displayBg    = Color(0xFF0D1B2A),
-        displayText  = Color(0xFF00E5FF),
-        indicatorOn  = Color(0xFF00E5FF),
-        indicatorOff = Color(0xFF1A2A3A),
-        keyNormal    = Color(0xFF1E1E2E),
-        keyFinancial = Color(0xFF16213E),
-        keyF         = Color(0xFF7C3AED),
-        keyG         = Color(0xFF0D9488),
-        keyOn        = Color(0xFFE63946),
-        keyEnter     = Color(0xFF252540),
-        keyLabel     = Color(0xFFE2E8F0),
-        fLabelColor  = Color(0xFFC084FC),
-        gLabelColor  = Color(0xFF2DD4BF),
+        name             = "Modern",
+        body             = Color(0xFF111111),
+        bodyEdge         = Color(0xFF000000),
+        displayBezel     = Color(0xFF0D0D1A),
+        displayBg        = Color(0xFF0D1B2A),
+        displayText      = Color(0xFF00E5FF),
+        indicatorOn      = Color(0xFF00E5FF),
+        indicatorOff     = Color(0xFF1A2A3A),
+        keyNormal        = Color(0xFF1E1E2E),
+        keyFinancial     = Color(0xFF16213E),
+        keyF             = Color(0xFF7C3AED),
+        keyG             = Color(0xFF0D9488),
+        keyOn            = Color(0xFFE63946),
+        keyEnter         = Color(0xFF252540),
+        keyTopHighlight  = Color(0x22FFFFFF),
+        keyBottomShadow  = Color(0x55000000),
+        keyLabel         = Color(0xFFE2E8F0),
+        fLabelColor      = Color(0xFFC084FC),
+        gLabelColor      = Color(0xFF2DD4BF),
     )
 }
 

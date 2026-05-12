@@ -8,7 +8,7 @@ import com.arcom.hp12c.engine.state.CalculatorState
 
 private const val PREFS_NAME = "hp12c_state"
 private const val KEY_STATE  = "state_json"
-private const val KEY_SKIN   = "skin_name"  
+private const val KEY_SKIN   = "skin_name"
 
 /**
  * Implementação Android de [StateRepository] via [android.content.SharedPreferences].
