@@ -11,7 +11,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import com.arcom.hp12c.android.ui.Hp12cScreen
+import com.arcom.hp12c.android.ui.Hp12cPlatinumRealisticScreen
 
 /**
  * Ponto de entrada da Application — inicializa o [ApplicationContextHolder] antes de
@@ -45,10 +45,9 @@ class MainActivity : ComponentActivity() {
 
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    Hp12cScreen(
+                    Hp12cPlatinumRealisticScreen(
                         calcState    = uiState.calcState,
                         isRunning    = uiState.isRunning,
-                        skin         = uiState.skin,
                         onToggleSkin = viewModel::toggleSkin,
                         onEvent      = viewModel::onEvent,
                     )
