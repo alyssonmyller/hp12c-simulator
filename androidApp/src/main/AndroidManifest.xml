@@ -11,6 +11,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:screenOrientation="landscape"
             android:label="HP 12C">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

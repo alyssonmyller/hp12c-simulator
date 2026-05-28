@@ -6,7 +6,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -17,12 +19,19 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.isUnspecified
 import androidx.compose.ui.unit.sp
 import com.arcom.hp12c.engine.CalculatorEngine
 import com.arcom.hp12c.engine.event.Event
@@ -261,6 +270,7 @@ private fun MetallicHeader(
                     1.0f to Color(0xFFA0A0A0),
                 )
             )
+            .statusBarsPadding()
             .padding(horizontal = 16.dp, vertical = 8.dp),
     ) {
         Row(
@@ -284,7 +294,7 @@ private fun MetallicHeader(
                         .border(1.dp, Color(0x50000000))
                         .padding(horizontal = 12.dp, vertical = 6.dp),
                 ) {
-                    Column(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy((-8).dp)) {
                         // Indicadores em linha
                         Row(
                             modifier          = Modifier.fillMaxWidth(),
@@ -301,23 +311,28 @@ private fun MetallicHeader(
                             IndicatorChip("RUN",   active = isRunning)
                         }
                         // Número
-                        Text(
-                            text       = displayText,
-                            color      = Color(0xFF0D1A0A),
-                            fontSize   = 38.sp,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold,
-                            textAlign  = TextAlign.End,
-                            maxLines   = 1,
-                            softWrap   = false,
-                            modifier   = Modifier.fillMaxWidth().padding(top = 2.dp),
-                        )
-                        Text(
-                            text       = "RPN",
-                            color      = Color(0xFF5A7050),
-                            fontSize   = 7.sp,
-                            fontFamily = FontFamily.Monospace,
-                        )
+                        Row(
+                            modifier          = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.Bottom,
+                        ) {
+                            Text(
+                                text       = "RPN",
+                                color      = Color(0xFF5A7050),
+                                fontSize   = 7.sp,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                            Text(
+                                text       = displayText,
+                                color      = Color(0xFF0D1A0A),
+                                fontSize   = 38.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                textAlign  = TextAlign.End,
+                                maxLines   = 1,
+                                softWrap   = false,
+                                modifier   = Modifier.weight(1f),
+                            )
+                        }
                     }
                 }
             }
@@ -445,7 +460,7 @@ private fun KeypadSection(
             // ── Coluna 6: CHS EEX ENTER ──────────────────────────────────────
             Column(
                 modifier              = Modifier.weight(1f),
-                verticalArrangement   = Arrangement.spacedBy(6.dp),
+                verticalArrangement   = Arrangement.spacedBy(1.dp),
             ) {
                 HP12Key("CHS", "RPN",   "DATE",  shift, handleKey, Modifier.weight(1f))
                 HP12Key("EEX", "ALG",   "ΔDYS",  shift, handleKey, Modifier.weight(1f))
@@ -480,18 +495,6 @@ private fun KeypadSection(
                 HP12Key("+",   "",      "LSTx",  shift, handleKey, Modifier.weight(1f))
             }
         }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Text(
-            text          = "H E W L E T T - P A C K A R D   1 2 C   P L A T I N U M",
-            color         = Color(0xFF666666),
-            fontSize       = 7.sp,
-            fontWeight    = FontWeight.Bold,
-            letterSpacing = 1.sp,
-        )
-
-        Spacer(modifier = Modifier.height(4.dp))
     }
 }
 
@@ -506,7 +509,7 @@ private fun RowScope.KeyCol(
 ) {
     Column(
         modifier            = Modifier.weight(weight),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(1.dp),
         content             = content,
     )
 }
@@ -545,13 +548,11 @@ private fun HP12Key(
         // Label f ACIMA (Laranja)
         Box(modifier = Modifier.height(15.dp), contentAlignment = Alignment.BottomCenter) {
             if (fLabel.isNotBlank()) {
-                Text(
+                AutosizeText(
                     text       = fLabel,
                     color      = Color(0xFFE69500),
                     fontSize   = 8.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines   = 1,
-                    softWrap   = false,
+                    fontWeight = FontWeight.Bold
                 )
             }
         }
@@ -578,33 +579,27 @@ private fun HP12Key(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
+                    AutosizeText(
                         text       = label,
                         color      = if (isShiftKey && label == "f") Color.Black else textColor,
                         fontSize   = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        textAlign  = TextAlign.Center,
+                        fontWeight = FontWeight.Bold
                     )
                 }
                 
                 // Divisor e Metade inferior: gLabel (Ciano)
                 if (gLabel.isNotBlank() && !isShiftKey) {
-                    Spacer(modifier = Modifier.fillMaxWidth().height(0.5.dp).background(Color(0x40000000)))
                     Box(
-                        modifier = Modifier.weight(0.8f).fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().background(Color(0xFF3B3B3B)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
+                        AutosizeText(
                             text       = gLabel,
                             color      = Color(0xFF00E5FF),
                             fontSize   = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines   = 1,
-                            softWrap   = false,
+                            fontWeight = FontWeight.Bold
                         )
                     }
-                } else {
-                    Spacer(modifier = Modifier.weight(0.8f))
                 }
             }
             if (isPressed) {
@@ -660,27 +655,22 @@ private fun HP12KeyEnter(
                     modifier = Modifier.weight(3f).fillMaxWidth(),
                     contentAlignment = Alignment.Center
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        "ENTER".forEach { ch ->
-                            Text(
-                                text       = ch.toString(),
-                                color      = Color.White,
-                                fontSize   = 16.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                lineHeight = 12.sp,
-                            )
-                        }
-                    }
+                    AutosizeVerticalText(
+                        text = "ENTER",
+                        maxFontSize = 16.sp, // Se a tela for grande, o limite é 16sp
+                        minFontSize = 8.sp,  // Se a tela for minúscula, ele encolhe até 8sp
+                        color = Color.White,
+                        fontWeight = FontWeight.ExtraBold
+                    )
                 }
                 
                 // Parte inferior: gLabel (Ciano)
                 if (gLabel.isNotBlank()) {
-                    Spacer(modifier = Modifier.fillMaxWidth().height(0.5.dp).background(Color(0x40000000)))
                     Box(
-                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        modifier = Modifier.weight(1f).fillMaxWidth().background(Color(0xFF3B3B3B)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
+                        AutosizeText(
                             text       = gLabel,
                             color      = Color(0xFF00E5FF),
                             fontSize   = 10.sp,
@@ -695,6 +685,104 @@ private fun HP12KeyEnter(
         }
     }
 }
+
+@Composable
+fun AutosizeText(
+    text: String,
+    modifier: Modifier = Modifier,
+    fontSize: TextUnit = TextUnit.Unspecified,
+    style: TextStyle = MaterialTheme.typography.bodyMedium,
+    color: Color = MaterialTheme.colorScheme.onSurface,
+    fontWeight: FontWeight = FontWeight.Bold,
+) {
+    BoxWithConstraints(modifier = modifier) {
+        val textMeasurer = rememberTextMeasurer()
+        val textLayoutResult = textMeasurer.measure(text, style)
+        val adjustedFontSize = if (textLayoutResult.size.width > maxWidth.toPx()) {
+            fontSize * ((maxWidth.toPx() / textLayoutResult.size.width) * 0.9f)
+        } else {
+            fontSize
+        }
+
+        Text(
+            text = text,
+            style = style,
+            maxLines = 1,
+            fontSize = adjustedFontSize,
+            color = color,
+            fontWeight = fontWeight,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+fun AutosizeVerticalText(
+    text: String,
+    modifier: Modifier = Modifier,
+    maxFontSize: TextUnit = 16.sp, // Tamanho máximo que a letra pode ter
+    minFontSize: TextUnit = 8.sp,  // Tamanho mínimo para não ficar ilegível
+    color: Color = Color.White,
+    fontWeight: FontWeight = FontWeight.ExtraBold,
+    style: TextStyle = TextStyle.Default
+) {
+    BoxWithConstraints(modifier = modifier) {
+        val density = LocalDensity.current
+        val textMeasurer = rememberTextMeasurer()
+
+        // Converte a altura máxima disponível de DP para Pixels
+        val maxHeightPx = with(density) { maxHeight.toPx() }
+
+        // Estado para encontrar o tamanho ideal da fonte
+        val adjustedFontSize = remember(text, maxHeightPx) {
+            var currentSize = if (maxFontSize.isUnspecified) 16.sp else maxFontSize
+            val minSize = if (minFontSize.isUnspecified) 8.sp else minFontSize
+
+            // Loop para diminuir a fonte até que a altura total caiba no container
+            while (currentSize > minSize) {
+                var totalHeight = 0f
+
+                // Calcula a altura que a coluna teria com o tamanho de fonte atual
+                text.forEach { ch ->
+                    val layoutResult = textMeasurer.measure(
+                        text = ch.toString(),
+                        style = style.copy(fontSize = currentSize, fontWeight = fontWeight)
+                    )
+                    totalHeight += layoutResult.size.height
+                }
+
+                // Se a soma da altura das letras couber na tela, encontramos o tamanho ideal!
+                if (totalHeight <= maxHeightPx) {
+                    break
+                }
+
+                // Se não couber, diminui 1sp e tenta de novo
+                currentSize = (currentSize.value - 1f).sp
+            }
+            currentSize
+        }
+
+        // Renderiza a coluna com o tamanho de fonte ajustado dinamicamente
+        Column(
+            modifier = Modifier.fillMaxHeight(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            text.forEach { ch ->
+                Text(
+                    text = ch.toString(),
+                    color = color,
+                    fontSize = adjustedFontSize,
+                    fontWeight = fontWeight,
+                    style = style
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun Dp.toPx() = with(LocalDensity.current) { this@toPx.toPx() }
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Preview
