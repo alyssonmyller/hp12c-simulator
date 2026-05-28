@@ -329,10 +329,14 @@ private fun MetallicHeader(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(44.dp)
-                        .clip(RoundedCornerShape(22.dp))
-                        .background(Color(0xFF333333))
-                        .border(1.5.dp, Color(0xFF707070), RoundedCornerShape(22.dp))
+                        .size(52.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(
+                            Brush.linearGradient(
+                                listOf(Color(0xFFE0E0E0), Color(0xFFB0B0B0))
+                            )
+                        )
+                        .border(1.dp, Color(0xFF888888), RoundedCornerShape(4.dp))
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication        = null,
@@ -340,21 +344,30 @@ private fun MetallicHeader(
                         ),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        text          = "hp",
-                        color         = Color.White,
-                        fontSize      = 22.sp,
-                        fontStyle     = FontStyle.Italic,
-                        fontWeight    = FontWeight.ExtraBold,
-                        modifier      = Modifier.offset(y = (-1).dp, x = (-1).dp),
-                        letterSpacing = (-1).sp,
-                    )
+                    // Círculo interno do logo HP
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(Color(0xFF282828)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text          = "hp",
+                            color         = Color.White,
+                            fontSize      = 20.sp,
+                            fontStyle     = FontStyle.Italic,
+                            fontWeight    = FontWeight.ExtraBold,
+                            modifier      = Modifier.offset(y = (-1).dp, x = (-1).dp),
+                            letterSpacing = (-1.5).sp,
+                        )
+                    }
                 }
                 Spacer(Modifier.height(4.dp))
                 Text(
                     text          = "12C PLATINUM",
                     color         = Color(0xFF222222),
-                    fontSize      = 10.sp,
+                    fontSize      = 9.sp,
                     fontWeight    = FontWeight.Bold,
                     letterSpacing = 0.5.sp,
                 )
@@ -396,78 +409,75 @@ private fun KeypadSection(
         ) {
             // ── Coluna 1: n yˣ R/S ON ────────────────────────────────────────
             KeyCol(1f) {
-                HP12Key("n",   "AMORT", "12÷",  shift, handleKey, Modifier.weight(1f), KeyStyle.Financial)
-                HP12Key("yˣ",  "√x",   "eˣ",   shift, handleKey, Modifier.weight(1f))
-                HP12Key("R/S", "PSE",   "P/R",  shift, handleKey, Modifier.weight(1f))
-                HP12Key("ON",  "",      "",      shift, handleKey, Modifier.weight(1f), keyColor = Color(0xFF2A2A2A))
+                HP12Key("n",   "AMORT", "12x",   shift, handleKey, Modifier.weight(1f))
+                HP12Key("yˣ",  "PRICE", "√x",    shift, handleKey, Modifier.weight(1f))
+                HP12Key("R/S", "P/R",   "PSE",   shift, handleKey, Modifier.weight(1f))
+                HP12Key("ON",  "OFF",   "",      shift, handleKey, Modifier.weight(1f))
             }
             // ── Coluna 2: i 1/x SST f ────────────────────────────────────────
             KeyCol(1f) {
-                HP12Key("i",   "INT",   "12×",  shift, handleKey, Modifier.weight(1f), KeyStyle.Financial)
-                HP12Key("1/x", "eˣ",   "x²",   shift, handleKey, Modifier.weight(1f))
-                HP12Key("SST", "PRGM",  "BST",  shift, handleKey, Modifier.weight(1f))
-                HP12Key("f",   "",      "",      shift, handleKey, Modifier.weight(1f),
-                    keyColor = Color(0xFFCC8800), textColor = Color.Black, isShiftKey = true)
+                HP12Key("i",   "INT",   "12÷",   shift, handleKey, Modifier.weight(1f))
+                HP12Key("1/x", "YTM",   "eˣ",    shift, handleKey, Modifier.weight(1f))
+                HP12Key("SST", "Σ",     "BST",   shift, handleKey, Modifier.weight(1f))
+                HP12Key("f",   "",      "",      shift, handleKey, Modifier.weight(1f), isShiftKey = true)
             }
-            // ── Coluna 3: PMT %T R↓ g ────────────────────────────────────────
+            // ── Coluna 3: PV %T R↓ g ─────────────────────────────────────────
             KeyCol(1f) {
-                HP12Key("PMT", "RND",   "CFj",  shift, handleKey, Modifier.weight(1f), KeyStyle.Financial)
-                HP12Key("%T",  "Δ%",   "%",     shift, handleKey, Modifier.weight(1f))
-                HP12Key("R↓",  "",     "GTO",   shift, handleKey, Modifier.weight(1f))
-                HP12Key("g",   "",      "",      shift, handleKey, Modifier.weight(1f),
-                    keyColor = Color(0xFF0056B3), textColor = Color.White, isShiftKey = true)
+                HP12Key("PV",  "NPV",   "CFo",   shift, handleKey, Modifier.weight(1f))
+                HP12Key("%T",  "SL",    "LN",    shift, handleKey, Modifier.weight(1f))
+                HP12Key("R↓",  "PRGM",  "GTO",   shift, handleKey, Modifier.weight(1f))
+                HP12Key("g",   "",      "",      shift, handleKey, Modifier.weight(1f), isShiftKey = true)
             }
-            // ── Coluna 4: PV Δ% x≷y STO ──────────────────────────────────────
+            // ── Coluna 4: PMT Δ% x≷y STO ─────────────────────────────────────
             KeyCol(1f) {
-                HP12Key("PV",   "NPV",  "CFo",  shift, handleKey, Modifier.weight(1f), KeyStyle.Financial)
-                HP12Key("Δ%",   "x²",  "ŷ,r",  shift, handleKey, Modifier.weight(1f))
-                HP12Key("x≷y",  "",    "x=0?", shift, handleKey, Modifier.weight(1f))
-                HP12Key("STO",  "CLR REG","",   shift, handleKey, Modifier.weight(1f))
+                HP12Key("PMT", "RND",   "CFj",   shift, handleKey, Modifier.weight(1f))
+                HP12Key("Δ%",  "SOYD",  "FRAC",  shift, handleKey, Modifier.weight(1f))
+                HP12Key("x≷y", "FIN",   "x≤y",   shift, handleKey, Modifier.weight(1f))
+                HP12Key("STO", "",      "(",     shift, handleKey, Modifier.weight(1f))
             }
             // ── Coluna 5: FV % CLX RCL ───────────────────────────────────────
             KeyCol(1f) {
-                HP12Key("FV",  "IRR",  "Nj",    shift, handleKey, Modifier.weight(1f), KeyStyle.Financial)
-                HP12Key("%",   "Σ+",   "%T",    shift, handleKey, Modifier.weight(1f))
-                HP12Key("CLX", "CLR Σ","",      shift, handleKey, Modifier.weight(1f))
-                HP12Key("RCL", "CLR FIN","",    shift, handleKey, Modifier.weight(1f))
+                HP12Key("FV",  "IRR",   "Nj",    shift, handleKey, Modifier.weight(1f))
+                HP12Key("%",   "DB",    "INTG",  shift, handleKey, Modifier.weight(1f))
+                HP12Key("CLX", "REG",   "x=0",   shift, handleKey, Modifier.weight(1f))
+                HP12Key("RCL", "",      ")",     shift, handleKey, Modifier.weight(1f))
             }
-            // ── Coluna 6: CHS EEX ENTER(vertical, ocupa linhas 3+4) ──────────
+            // ── Coluna 6: CHS EEX ENTER ──────────────────────────────────────
             Column(
                 modifier              = Modifier.weight(1f),
                 verticalArrangement   = Arrangement.spacedBy(6.dp),
             ) {
-                HP12Key("CHS", "EEX",  "x̄w",   shift, handleKey, Modifier.weight(1f))
-                HP12Key("EEX", "INT",  "s",     shift, handleKey, Modifier.weight(1f))
-                // ENTER alto — ocupa o espaço das duas linhas inferiores
-                HP12KeyEnter(shift, handleKey, Modifier.weight(2.1f))
+                HP12Key("CHS", "RPN",   "DATE",  shift, handleKey, Modifier.weight(1f))
+                HP12Key("EEX", "ALG",   "ΔDYS",  shift, handleKey, Modifier.weight(1f))
+                HP12KeyEnter(shift, handleKey, Modifier.weight(2.1f), gLabel = "LSTx")
             }
             // ── Coluna 7: 7 4 1 0 ────────────────────────────────────────────
             KeyCol(1f) {
-                HP12Key("7", "", "BEG", shift, handleKey, Modifier.weight(1f), KeyStyle.Numeric)
-                HP12Key("4", "", "x=y?",shift, handleKey, Modifier.weight(1f), KeyStyle.Numeric)
-                HP12Key("1", "", "PSE", shift, handleKey, Modifier.weight(1f), KeyStyle.Numeric)
-                HP12Key("0", "n!","x̄",  shift, handleKey, Modifier.weight(1f), KeyStyle.Numeric)
+                HP12Key("7",   "",      "BEG",   shift, handleKey, Modifier.weight(1f))
+                HP12Key("4",   "",      "D.MY",  shift, handleKey, Modifier.weight(1f))
+                HP12Key("1",   "",      "x̄,r",   shift, handleKey, Modifier.weight(1f))
+                HP12Key("0",   "",      "x̄",     shift, handleKey, Modifier.weight(1f))
             }
             // ── Coluna 8: 8 5 2 · ────────────────────────────────────────────
             KeyCol(1f) {
-                HP12Key("8", "", "END", shift, handleKey, Modifier.weight(1f), KeyStyle.Numeric)
-                HP12Key("5", "", "x<y?",shift, handleKey, Modifier.weight(1f), KeyStyle.Numeric)
-                HP12Key("2", "", "x=0?",shift, handleKey, Modifier.weight(1f), KeyStyle.Numeric)
-                HP12Key("·", "INT","s", shift, handleKey, Modifier.weight(1f), KeyStyle.Numeric)
+                HP12Key("8",   "",      "END",   shift, handleKey, Modifier.weight(1f))
+                HP12Key("5",   "",      "M.DY",  shift, handleKey, Modifier.weight(1f))
+                HP12Key("2",   "",      "ŷ,r",   shift, handleKey, Modifier.weight(1f))
+                HP12Key("·",   "",      "s",     shift, handleKey, Modifier.weight(1f))
             }
             // ── Coluna 9: 9 6 3 Σ+ ───────────────────────────────────────────
             KeyCol(1f) {
-                HP12Key("9",  "", "D.MY", shift, handleKey, Modifier.weight(1f), KeyStyle.Numeric)
-                HP12Key("6",  "DATE","",  shift, handleKey, Modifier.weight(1f), KeyStyle.Numeric)
-                HP12Key("3",  "", "x≤0?", shift, handleKey, Modifier.weight(1f), KeyStyle.Numeric)
-                HP12Key("Σ+", "Σ−","ŷ,r", shift, handleKey, Modifier.weight(1f))
+                HP12Key("9",   "",      "MEM",   shift, handleKey, Modifier.weight(1f))
+                HP12Key("6",   "",      "x̄w",    shift, handleKey, Modifier.weight(1f))
+                HP12Key("3",   "",      "n!",    shift, handleKey, Modifier.weight(1f))
+                HP12Key("Σ+",  "",      "Σ-",    shift, handleKey, Modifier.weight(1f))
             }
             // ── Coluna 10: ÷ × − + ───────────────────────────────────────────
             KeyCol(1f) {
-                HP12Key("÷", "", "M.DY",  shift, handleKey, Modifier.weight(1f))
-                HP12Key("×", "DYS","",    shift, handleKey, Modifier.weight(1f))
-                HP12Key("−", "", "",       shift, handleKey, Modifier.weight(1f))
-                HP12Key("+", "", "x̂,r",   shift, handleKey, Modifier.weight(1f))
+                HP12Key("÷",   "",      "x⇆y",   shift, handleKey, Modifier.weight(1f))
+                HP12Key("×",   "",      "x²",    shift, handleKey, Modifier.weight(1f))
+                HP12Key("−",   "",      "←",     shift, handleKey, Modifier.weight(1f))
+                HP12Key("+",   "",      "LSTx",  shift, handleKey, Modifier.weight(1f))
             }
         }
 
@@ -511,147 +521,176 @@ private fun HP12Key(
     handleKey: (String) -> Unit,
     modifier: Modifier = Modifier,
     style: KeyStyle    = KeyStyle.Normal,
-    keyColor: Color    = Color(0xFF222222),
+    keyColor: Color    = Color(0xFF282828),
     textColor: Color   = Color.White,
     isShiftKey: Boolean = false,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
 
-    // Cor efetiva da tecla
-    val effectiveBg = when (style) {
-        KeyStyle.Numeric   -> Color(0xFFCCCCCC)
-        KeyStyle.Financial -> Color(0xFF252520)
-        else               -> keyColor
-    }
-    val effectiveText = when (style) {
-        KeyStyle.Numeric -> Color(0xFF111111)
-        else             -> textColor
+    // Estilo Platinum: quase todas as teclas são grafite escuro
+    val baseColor = when {
+        isShiftKey && label == "f" -> Color(0xFFE69500) // Laranja-Dourado
+        isShiftKey && label == "g" -> Color(0xFF0066CC) // Azul Profundo
+        else -> Color(0xFF282828)
     }
 
-    // Highlight de shift ativo
-    val isActiveShift = (isShiftKey && label == "f" && shift == ShiftState.F_SHIFT)
-                     || (isShiftKey && label == "g" && shift == ShiftState.G_SHIFT)
+    val isActiveShift = (isShiftKey && label == "f" && shift == ShiftState.F_SHIFT) ||
+                        (isShiftKey && label == "g" && shift == ShiftState.G_SHIFT)
 
     Column(
         modifier            = modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
     ) {
-        // Label f acima
-        Box(modifier = Modifier.height(14.dp), contentAlignment = Alignment.BottomCenter) {
+        // Label f ACIMA (Laranja)
+        Box(modifier = Modifier.height(15.dp), contentAlignment = Alignment.BottomCenter) {
             if (fLabel.isNotBlank()) {
                 Text(
-                    text      = fLabel,
-                    color     = Color(0xFFCC8800),
-                    fontSize  = 8.sp,
+                    text       = fLabel,
+                    color      = Color(0xFFE69500),
+                    fontSize   = 8.sp,
                     fontWeight = FontWeight.Bold,
-                    maxLines  = 1,
-                    softWrap  = false,
+                    maxLines   = 1,
+                    softWrap   = false,
                 )
             }
         }
 
-        Spacer(Modifier.height(1.dp))
+        Spacer(Modifier.height(2.dp))
 
-        // Corpo da tecla
+        // Corpo da Tecla
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
-                .clip(RoundedCornerShape(3.dp))
-                .background(
-                    if (isActiveShift) SolidColor(effectiveBg.copy(alpha = 0.6f))
-                    else Brush.verticalGradient(
-                        listOf(
-                            effectiveBg.copy(
-                                red   = (effectiveBg.red   + 0.12f).coerceAtMost(1f),
-                                green = (effectiveBg.green + 0.12f).coerceAtMost(1f),
-                                blue  = (effectiveBg.blue  + 0.12f).coerceAtMost(1f),
-                            ),
-                            effectiveBg,
-                        )
-                    )
-                )
-                .border(
-                    0.5.dp,
-                    if (style == KeyStyle.Numeric) Color(0xFF888888) else Color(0xFF444444),
-                    RoundedCornerShape(3.dp),
-                )
+                .clip(RoundedCornerShape(4.dp))
+                .background(if (isActiveShift) baseColor.copy(alpha = 0.7f) else baseColor)
+                .border(1.dp, Color(0xFF151515), RoundedCornerShape(4.dp))
                 .clickable(
                     interactionSource = interactionSource,
                     indication        = null,
                 ) { handleKey(label) },
             contentAlignment = Alignment.Center,
         ) {
-            if (isPressed) {
-                Box(modifier = Modifier.fillMaxSize().background(Color(0x40FFFFFF)))
+            Column(modifier = Modifier.fillMaxSize()) {
+                // Metade superior: Label principal (Branco)
+                Box(
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text       = label,
+                        color      = if (isShiftKey && label == "f") Color.Black else textColor,
+                        fontSize   = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign  = TextAlign.Center,
+                    )
+                }
+                
+                // Divisor e Metade inferior: gLabel (Ciano)
+                if (gLabel.isNotBlank() && !isShiftKey) {
+                    Spacer(modifier = Modifier.fillMaxWidth().height(0.5.dp).background(Color(0x40000000)))
+                    Box(
+                        modifier = Modifier.weight(0.8f).fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text       = gLabel,
+                            color      = Color(0xFF00E5FF),
+                            fontSize   = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines   = 1,
+                            softWrap   = false,
+                        )
+                    }
+                } else {
+                    Spacer(modifier = Modifier.weight(0.8f))
+                }
             }
-            Text(
-                text       = label,
-                color      = effectiveText,
-                fontSize   = 16.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines   = 1,
-                softWrap   = false,
-                textAlign  = TextAlign.Center,
-            )
-        }
-
-        // Label g abaixo
-        Box(modifier = Modifier.height(12.dp), contentAlignment = Alignment.TopCenter) {
-            if (gLabel.isNotBlank()) {
-                Text(
-                    text      = gLabel,
-                    color     = Color(0xFF1A72D4),
-                    fontSize  = 7.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines  = 1,
-                    softWrap  = false,
-                )
+            if (isPressed) {
+                Box(modifier = Modifier.fillMaxSize().background(Color(0x20FFFFFF)))
             }
         }
     }
 }
 
-/** Tecla ENTER — alta, com letras verticais. */
+/** Tecla ENTER — alta, com g-label e design fiel ao Platinum. */
 @Composable
 private fun HP12KeyEnter(
     shift: ShiftState,
     handleKey: (String) -> Unit,
     modifier: Modifier = Modifier,
+    gLabel: String = "LSTx"
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
 
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(3.dp))
-            .background(
-                Brush.verticalGradient(
-                    listOf(Color(0xFF353535), Color(0xFF222222)),
-                )
-            )
-            .border(0.5.dp, Color(0xFF444444), RoundedCornerShape(3.dp))
-            .clickable(
-                interactionSource = interactionSource,
-                indication        = null,
-            ) { handleKey("ENTER") },
-        contentAlignment = Alignment.Center,
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        if (isPressed) {
-            Box(modifier = Modifier.fillMaxSize().background(Color(0x40FFFFFF)))
+        // Label PREFIX acima (Laranja)
+        Box(modifier = Modifier.height(15.dp), contentAlignment = Alignment.BottomCenter) {
+            Text(
+                text = "PREFIX",
+                color = Color(0xFFE69500),
+                fontSize = 8.sp,
+                fontWeight = FontWeight.Bold
+            )
         }
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            "ENTER".forEach { ch ->
-                Text(
-                    text       = ch.toString(),
-                    color      = Color.White,
-                    fontSize   = 18.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    lineHeight = 13.sp,
-                )
+
+        Spacer(Modifier.height(2.dp))
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .clip(RoundedCornerShape(4.dp))
+                .background(Color(0xFF282828))
+                .border(1.dp, Color(0xFF151515), RoundedCornerShape(4.dp))
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication        = null,
+                ) { handleKey("ENTER") },
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                // Parte superior: ENTER vertical
+                Box(
+                    modifier = Modifier.weight(3f).fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        "ENTER".forEach { ch ->
+                            Text(
+                                text       = ch.toString(),
+                                color      = Color.White,
+                                fontSize   = 16.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                lineHeight = 12.sp,
+                            )
+                        }
+                    }
+                }
+                
+                // Parte inferior: gLabel (Ciano)
+                if (gLabel.isNotBlank()) {
+                    Spacer(modifier = Modifier.fillMaxWidth().height(0.5.dp).background(Color(0x40000000)))
+                    Box(
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text       = gLabel,
+                            color      = Color(0xFF00E5FF),
+                            fontSize   = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
+            }
+            if (isPressed) {
+                Box(modifier = Modifier.fillMaxSize().background(Color(0x20FFFFFF)))
             }
         }
     }
