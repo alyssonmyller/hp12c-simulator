@@ -139,6 +139,13 @@ private fun resolveRealisticKey(
 
     // Shift ativo: despacha fEvent/gEvent do KeyDef
     if (shift != ShiftState.NONE) {
+        // ── f + dígito (0–9) → FIX n (casas decimais do display) ────────────
+        // Regra canônica do HP 12C Platinum: pressionar f seguido de qualquer
+        // dígito 0–9 define o número de casas decimais (FIX 0..FIX 9).
+        // Tem precedência sobre qualquer fEvent mapeado no KeyDef para dígitos.
+        if (shift == ShiftState.F_SHIFT && label.length == 1 && label[0].isDigit()) {
+            return result(Event.Display.Fix(label[0] - '0'))
+        }
         val def = findKeyDefByLabel(label)
         val ev  = if (shift == ShiftState.F_SHIFT) def?.fEvent else def?.gEvent
         return result(ev)
