@@ -34,6 +34,12 @@ android {
             isMinifyEnabled = false
         }
     }
+
+    packaging {
+        resources {
+            excludes += "**/*.pdf"
+        }
+    }
 }
 
 dependencies {
