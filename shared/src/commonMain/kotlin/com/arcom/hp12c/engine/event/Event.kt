@@ -1,6 +1,6 @@
-package com.arcom.hp12c.engine.event
+package br.com.alyssonmyller.calculus.engine.event
 
-import com.arcom.hp12c.engine.state.RegisterId
+import br.com.alyssonmyller.calculus.engine.state.RegisterId
 
 /**
  * Alfabeto de teclas lógicas da HP 12C — um `Event` = uma tecla (após o adapter de UI
@@ -234,9 +234,22 @@ sealed class Event {
         object Irr          : Cashflow()   // f IRR
     }
 
-    // --- Placeholders Fase 2 restantes (comentados propositalmente) ---
-    // sealed class Depreciation   : Event() { object StraightLine, SumOfYears, DecliningBalance }
-    // sealed class AlgebraicToggle: Event() { object AlgMode, RpnMode }
+    // --- Modo algébrico (f EEX = ALG) ---
+    /**
+     * `f EEX` (tecla "ALG"): alterna entre modo RPN (padrão) e modo Algébrico.
+     * Em modo ALG, operações binárias (+, −, ×, ÷) ficam pendentes com precedência e
+     * `ENTER` / `=` disparam a avaliação da expressão acumulada.
+     * Ver: manual HP 12C Platinum, Appendix A "Algebraic Mode", p. 185-193.
+     */
+    sealed class AlgebraicMode : Event() {
+        object Toggle   : AlgebraicMode()   // f EEX — liga/desliga ALG
+        object Equals   : AlgebraicMode()   // ENTER em ALG = "="
+        object LParen   : AlgebraicMode()   // "(" (STO em ALG)
+        object RParen   : AlgebraicMode()   // ")" (RCL em ALG)
+    }
+
+    // --- Placeholders Fase 2 restantes ---
+    // sealed class Depreciation: Event() { ... }
 
     /**
      * Funções de calendário — Seção 9 do manual, p. 106-113.
@@ -295,19 +308,19 @@ sealed class Event {
          * `GTO target` — em Editing: grava `ProgramStep.Goto(target)`.
          * Em Idle: posiciona cursor/pc sem iniciar execução (manual p. 113).
          */
-        data class Goto(val target: com.arcom.hp12c.engine.state.ProgramTarget) : Program()
+        data class Goto(val target: br.com.alyssonmyller.calculus.engine.state.ProgramTarget) : Program()
 
         /**
          * `GSB target` — em Editing: grava `ProgramStep.Gosub(target)`.
          * Em Idle: executa subrotina imediatamente.
          */
-        data class Gosub(val target: com.arcom.hp12c.engine.state.ProgramTarget) : Program()
+        data class Gosub(val target: br.com.alyssonmyller.calculus.engine.state.ProgramTarget) : Program()
 
         /** `RTN` — em Editing: grava `ProgramStep.Return`. Noop em Idle. */
         data object Return : Program()
 
         /** `LBL label` — em Editing: grava `ProgramStep.Label(label)`. */
-        data class Lbl(val label: com.arcom.hp12c.engine.state.ProgramLabel) : Program()
+        data class Lbl(val label: br.com.alyssonmyller.calculus.engine.state.ProgramLabel) : Program()
 
         // ── Condicionais (gravados como ProgramStep.Conditional em Editing) ──
 

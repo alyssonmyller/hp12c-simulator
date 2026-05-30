@@ -1,7 +1,7 @@
-package com.arcom.hp12c.engine.state
+package br.com.alyssonmyller.calculus.engine.state
 
-import com.arcom.hp12c.engine.event.Event
-import com.arcom.hp12c.engine.state.ProgramStep.KeyStep
+import br.com.alyssonmyller.calculus.engine.event.Event
+import br.com.alyssonmyller.calculus.engine.state.ProgramStep.KeyStep
 
 /**
  * Tabela de mapeamento bidirecional entre `Event` e `ProgramStep.KeyStep`.
@@ -223,6 +223,12 @@ object ProgramKeyCode {
         // Program: RunStop is the only Program event stored as KeyStep
         is Event.Program -> if (event is Event.Program.RunStop) KeyStep(K_RUNSTOP) else null
 
+        // AlgebraicMode toggle pode ser gravado em programa (como qualquer tecla)
+        Event.AlgebraicMode.Toggle -> KeyStep("ALG_TOGGLE")
+        Event.AlgebraicMode.Equals -> KeyStep("ALG_EQUALS")
+        Event.AlgebraicMode.LParen -> KeyStep("ALG_LPAREN")
+        Event.AlgebraicMode.RParen -> KeyStep("ALG_RPAREN")
+
         // Not storable
         Event.AcknowledgeError -> null
     }
@@ -320,6 +326,12 @@ object ProgramKeyCode {
 
             // K_RUNSTOP is handled specially in executeStep (stops execution)
             K_RUNSTOP    -> null   // caller checks for RUNSTOP before decode
+
+            // AlgebraicMode
+            "ALG_TOGGLE" -> Event.AlgebraicMode.Toggle
+            "ALG_EQUALS" -> Event.AlgebraicMode.Equals
+            "ALG_LPAREN" -> Event.AlgebraicMode.LParen
+            "ALG_RPAREN" -> Event.AlgebraicMode.RParen
 
             else         -> null   // unknown keycode — skip gracefully
         }

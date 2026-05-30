@@ -1,6 +1,6 @@
-package com.arcom.hp12c.engine.state
+package br.com.alyssonmyller.calculus.engine.state
 
-import com.arcom.hp12c.engine.error.Hp12cError
+import br.com.alyssonmyller.calculus.engine.error.Hp12cError
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 
@@ -36,6 +36,26 @@ data class CalculatorState(
 
     /** Flag C da HP (STO EEX): `true` = juros compostos para período fracionário. Default = simples. */
     val compoundFractionFlag: Boolean = false,
+
+    /**
+     * Modo Algébrico (f EEX / "ALG"): `true` = modo algébrico ativo.
+     * Em modo ALG os operadores binários acumulam com precedência e `ENTER` avalia.
+     * Padrão de fábrica: `false` (modo RPN).
+     * Manual HP 12C Platinum, Appendix A, p. 185.
+     */
+    val algebraicMode: Boolean = false,
+
+    /**
+     * Pilha de operadores do modo ALG (transiente — não persistida).
+     * Cada elemento é o ordinal de [AlgOp]: 0=PLUS,1=MINUS,2=MUL,3=DIV,4=LPAREN.
+     */
+    @Transient val algOpStack: List<Int> = emptyList(),
+
+    /**
+     * Pilha de operandos do modo ALG (transiente — não persistida).
+     * Armazena os valores já "commitados" aguardando um operador de menor precedência.
+     */
+    @Transient val algValStack: List<String> = emptyList(),
 
     /**
      * Buffer de digitação em curso. **Invariante:** é não-nulo **se e somente se**
@@ -82,7 +102,7 @@ data class CalculatorState(
      * **@Transient**: não é persistido. Ao reabrir o app a engine volta a `Idle`.
      * Ver `arquitetura/programacao.md` §3 e `state/ProgramStep.kt`.
      */
-    @Transient val programState: ProgramState = ProgramState.Idle,
+    @Transient val programState: ProgramState = ProgramState.Idle(),
 
     /**
      * Fita de programa: lista de passos gravados pelo usuário no modo PRGM.

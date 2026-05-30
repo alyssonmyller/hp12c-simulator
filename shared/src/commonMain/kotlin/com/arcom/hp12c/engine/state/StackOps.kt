@@ -1,6 +1,6 @@
-package com.arcom.hp12c.engine.state
+package br.com.alyssonmyller.calculus.engine.state
 
-import com.arcom.hp12c.engine.math.Hp12cDecimal
+import br.com.alyssonmyller.calculus.engine.math.Hp12cDecimal
 
 /**
  * Operações puras sobre [Stack]. Cada função retorna um `Stack` novo — toda mutação da

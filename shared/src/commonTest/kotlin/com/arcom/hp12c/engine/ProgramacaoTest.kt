@@ -1,15 +1,15 @@
-package com.arcom.hp12c.engine
+package br.com.alyssonmyller.calculus.engine
 
-import com.arcom.hp12c.engine.event.Event
-import com.arcom.hp12c.engine.CalculatorEngine
-import com.arcom.hp12c.engine.state.ConditionalTest
-import com.arcom.hp12c.engine.state.ProgramLabel
-import com.arcom.hp12c.engine.state.ProgramMemory
-import com.arcom.hp12c.engine.state.ProgramState
-import com.arcom.hp12c.engine.state.ProgramStep
-import com.arcom.hp12c.engine.state.ProgramTarget
-import com.arcom.hp12c.engine.state.NumericSeparator
-import com.arcom.hp12c.engine.state.CalculatorState
+import br.com.alyssonmyller.calculus.engine.event.Event
+import br.com.alyssonmyller.calculus.engine.CalculatorEngine
+import br.com.alyssonmyller.calculus.engine.state.ConditionalTest
+import br.com.alyssonmyller.calculus.engine.state.ProgramLabel
+import br.com.alyssonmyller.calculus.engine.state.ProgramMemory
+import br.com.alyssonmyller.calculus.engine.state.ProgramState
+import br.com.alyssonmyller.calculus.engine.state.ProgramStep
+import br.com.alyssonmyller.calculus.engine.state.ProgramTarget
+import br.com.alyssonmyller.calculus.engine.state.NumericSeparator
+import br.com.alyssonmyller.calculus.engine.state.CalculatorState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -37,7 +37,7 @@ class ProgramacaoTest {
         engine.reduce(s, e)
     }
 
-    private fun display(state: com.arcom.hp12c.engine.state.CalculatorState) =
+    private fun display(state: br.com.alyssonmyller.calculus.engine.state.CalculatorState) =
         engine.formatDisplay(state, NumericSeparator.PERIOD_COMMA).replace(",", "")
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -516,6 +516,82 @@ class ProgramacaoTest {
     // ─────────────────────────────────────────────────────────────────────────
     //  10. Múltiplos programas sequenciais (estado não contamina)
     // ─────────────────────────────────────────────────────────────────────────
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  11. GTO em modo Idle posiciona o PC para o próximo R/S
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `GTO em Idle posiciona startPc para o proximo RunStop`() {
+        // Programa:
+        //   step 0: Digit(9)     ← nunca executado se R/S começar do step 1
+        //   step 1: Digit(1)
+        //   step 2: Add
+        //   step 3: Return
+        //
+        // GTO 001 → RunStop com X=4 deve executar a partir do step 1 e retornar 4+1=5,
+        // não 9 (que seria o resultado de começar do step 0).
+        val base = seq(
+            Event.Program.TogglePrgmMode,
+            Event.Program.ClearProgram,
+            Event.Entry.Digit(9),               // step 0
+            Event.Entry.Digit(1), Event.Arith.Add,  // steps 1-2
+            Event.Program.Return,               // step 3
+            Event.Program.TogglePrgmMode,
+        )
+        // GTO 001 em modo Idle: posiciona startPc=1
+        val afterGto = engine.reduce(base, Event.Program.Goto(ProgramTarget.LineTarget(1)))
+        assertIs<ProgramState.Idle>(afterGto.programState)
+        assertEquals(1, (afterGto.programState as ProgramState.Idle).startPc, "startPc=1 após GTO 001")
+
+        // Empilha 4 e R/S: deve começar do step 1, executar +1, retornar 5
+        val run = engine.reduce(engine.reduce(afterGto, Event.Entry.Digit(4)), Event.Program.RunStop)
+        assertEquals("5.00", display(run), "GTO 001 + RunStop(4) = 4+1 = 5")
+    }
+
+    @Test
+    fun `GTO para label em Idle posiciona startPc corretamente`() {
+        // Programa:
+        //   step 0: Digit(9)     ← pulado
+        //   step 1: LBL A
+        //   step 2: Digit(2)
+        //   step 3: Add
+        //   step 4: Return
+        val labelA = ProgramLabel.AlphaLabel('A')
+        val base = seq(
+            Event.Program.TogglePrgmMode,
+            Event.Program.ClearProgram,
+            Event.Entry.Digit(9),                    // step 0
+            Event.Program.Lbl(labelA),               // step 1
+            Event.Entry.Digit(2), Event.Arith.Add,   // steps 2-3
+            Event.Program.Return,                    // step 4
+            Event.Program.TogglePrgmMode,
+        )
+        val afterGto = engine.reduce(base, Event.Program.Goto(ProgramTarget.LabelTarget(labelA)))
+        assertIs<ProgramState.Idle>(afterGto.programState)
+        assertEquals(1, (afterGto.programState as ProgramState.Idle).startPc, "startPc=1 (índice de LBL A)")
+
+        val run = engine.reduce(engine.reduce(afterGto, Event.Entry.Digit(3)), Event.Program.RunStop)
+        assertEquals("5.00", display(run), "GTO A + RunStop(3) = 3+2 = 5")
+    }
+
+    @Test
+    fun `RunStop sem GTO previa comeca do passo 0`() {
+        // Sem GTO precedente, startPc=0 (default)
+        val base = seq(
+            Event.Program.TogglePrgmMode,
+            Event.Program.ClearProgram,
+            Event.Entry.Digit(1), Event.Arith.Add,   // steps 0-1
+            Event.Entry.Digit(1), Event.Arith.Add,   // steps 2-3
+            Event.Program.Return,
+            Event.Program.TogglePrgmMode,
+        )
+        assertIs<ProgramState.Idle>(base.programState)
+        assertEquals(0, (base.programState as ProgramState.Idle).startPc, "startPc=0 por default")
+
+        val run = engine.reduce(engine.reduce(base, Event.Entry.Digit(0)), Event.Program.RunStop)
+        assertEquals("2.00", display(run), "0+1+1=2")
+    }
 
     @Test
     fun `segundo RunStop reexecuta o mesmo programa`() {

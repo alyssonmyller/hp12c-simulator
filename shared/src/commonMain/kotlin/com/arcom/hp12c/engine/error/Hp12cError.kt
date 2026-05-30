@@ -1,4 +1,4 @@
-package com.arcom.hp12c.engine.error
+package br.com.alyssonmyller.calculus.engine.error
 
 /**
  * Os 10 códigos de erro da HP 12C Platinum, modelados como sealed class para que cada

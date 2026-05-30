@@ -1,4 +1,4 @@
-package com.arcom.hp12c.engine.math
+package br.com.alyssonmyller.calculus.engine.math
 
 /**
  * **Stub iOS do [Hp12cDecimal].** Mantém os targets iOS compilando; todas as operações

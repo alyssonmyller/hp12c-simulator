@@ -1,35 +1,35 @@
-package com.arcom.hp12c.engine
+package br.com.alyssonmyller.calculus.engine
 
-import com.arcom.hp12c.engine.error.Hp12cError
-import com.arcom.hp12c.engine.event.Event
-import com.arcom.hp12c.engine.format.DisplayFormatter
-import com.arcom.hp12c.engine.math.Hp12cDecimal
-import com.arcom.hp12c.engine.state.CalculatorState
-import com.arcom.hp12c.engine.state.DisplayFormat
-import com.arcom.hp12c.engine.state.NumericSeparator
-import com.arcom.hp12c.engine.state.CashflowEntry
-import com.arcom.hp12c.engine.state.CashflowRegisters
-import com.arcom.hp12c.engine.state.DateFormat
-import com.arcom.hp12c.engine.state.TvmMode
-import com.arcom.hp12c.engine.state.ConditionalTest
-import com.arcom.hp12c.engine.state.ProgramKeyCode
-import com.arcom.hp12c.engine.state.ProgramLabel
-import com.arcom.hp12c.engine.state.ProgramMemory
-import com.arcom.hp12c.engine.state.ProgramState
-import com.arcom.hp12c.engine.state.ProgramStep
-import com.arcom.hp12c.engine.state.ProgramTarget
-import com.arcom.hp12c.engine.state.RegisterId
-import com.arcom.hp12c.engine.state.acceptNewNumber
-import com.arcom.hp12c.engine.state.binaryOp
-import com.arcom.hp12c.engine.state.clx
-import com.arcom.hp12c.engine.state.dualOutputOp
-import com.arcom.hp12c.engine.state.enter
-import com.arcom.hp12c.engine.state.lstx
-import com.arcom.hp12c.engine.state.percentOp
-import com.arcom.hp12c.engine.state.pushValue
-import com.arcom.hp12c.engine.state.rollDown
-import com.arcom.hp12c.engine.state.swapXY
-import com.arcom.hp12c.engine.state.unaryOp
+import br.com.alyssonmyller.calculus.engine.error.Hp12cError
+import br.com.alyssonmyller.calculus.engine.event.Event
+import br.com.alyssonmyller.calculus.engine.format.DisplayFormatter
+import br.com.alyssonmyller.calculus.engine.math.Hp12cDecimal
+import br.com.alyssonmyller.calculus.engine.state.CalculatorState
+import br.com.alyssonmyller.calculus.engine.state.DisplayFormat
+import br.com.alyssonmyller.calculus.engine.state.NumericSeparator
+import br.com.alyssonmyller.calculus.engine.state.CashflowEntry
+import br.com.alyssonmyller.calculus.engine.state.CashflowRegisters
+import br.com.alyssonmyller.calculus.engine.state.DateFormat
+import br.com.alyssonmyller.calculus.engine.state.TvmMode
+import br.com.alyssonmyller.calculus.engine.state.ConditionalTest
+import br.com.alyssonmyller.calculus.engine.state.ProgramKeyCode
+import br.com.alyssonmyller.calculus.engine.state.ProgramLabel
+import br.com.alyssonmyller.calculus.engine.state.ProgramMemory
+import br.com.alyssonmyller.calculus.engine.state.ProgramState
+import br.com.alyssonmyller.calculus.engine.state.ProgramStep
+import br.com.alyssonmyller.calculus.engine.state.ProgramTarget
+import br.com.alyssonmyller.calculus.engine.state.RegisterId
+import br.com.alyssonmyller.calculus.engine.state.acceptNewNumber
+import br.com.alyssonmyller.calculus.engine.state.binaryOp
+import br.com.alyssonmyller.calculus.engine.state.clx
+import br.com.alyssonmyller.calculus.engine.state.dualOutputOp
+import br.com.alyssonmyller.calculus.engine.state.enter
+import br.com.alyssonmyller.calculus.engine.state.lstx
+import br.com.alyssonmyller.calculus.engine.state.percentOp
+import br.com.alyssonmyller.calculus.engine.state.pushValue
+import br.com.alyssonmyller.calculus.engine.state.rollDown
+import br.com.alyssonmyller.calculus.engine.state.swapXY
+import br.com.alyssonmyller.calculus.engine.state.unaryOp
 
 /**
  * Implementação default de [CalculatorEngine]. Fase 1 em progresso:
@@ -89,19 +89,20 @@ internal class DefaultEngine : CalculatorEngine {
         }
 
         return when (event) {
-            is Event.Program        -> reduceProgram(state, event)
-            is Event.Entry          -> reduceEntry(state, event)
-            is Event.StackOp        -> reduceStackOp(state.commitEntry(), event)
-            is Event.Arith          -> reduceArith(state.commitEntry(), event)
-            is Event.Memory         -> reduceMemory(state.commitEntry(), event)
-            is Event.Display        -> reduceDisplay(state, event)   // NÃO comita (entrada persiste)
-            Event.AcknowledgeError  -> state                          // sem erro pendente: no-op
-            is Event.Financial      -> reduceFinancial(state, event)
-            is Event.Transcendental -> reduceTranscendental(state.commitEntry(), event)
-            is Event.Percent        -> reducePercent(state.commitEntry(), event)
-            is Event.Statistics     -> reduceStatistics(state.commitEntry(), event)
-            is Event.Calendar       -> reduceCalendar(state, event)
-            is Event.Cashflow       -> reduceCashflow(state.commitEntry(), event)
+            is Event.Program          -> reduceProgram(state, event)
+            is Event.Entry            -> reduceEntry(state, event)
+            is Event.StackOp          -> reduceStackOpOrAlgEquals(state.commitEntry(), event)
+            is Event.Arith            -> reduceArithOrAlg(state.commitEntry(), event)
+            is Event.Memory           -> reduceMemory(state.commitEntry(), event)
+            is Event.Display          -> reduceDisplay(state, event)
+            Event.AcknowledgeError    -> state
+            is Event.Financial        -> reduceFinancial(state, event)
+            is Event.Transcendental   -> reduceTranscendental(state.commitEntry(), event)
+            is Event.Percent          -> reducePercent(state.commitEntry(), event)
+            is Event.Statistics       -> reduceStatistics(state.commitEntry(), event)
+            is Event.Calendar         -> reduceCalendar(state, event)
+            is Event.Cashflow         -> reduceCashflow(state.commitEntry(), event)
+            is Event.AlgebraicMode    -> reduceAlgebraicMode(state.commitEntry(), event)
         }
     }
 
@@ -227,6 +228,164 @@ internal class DefaultEngine : CalculatorEngine {
             }
             Event.StackOp.LastX    -> state.copy(stack = state.stack.lstx())
         }
+
+    // ───────────────────────────────────────────────────────────────────────────
+    //  Modo ALG — Toggle, operadores com precedência, Equals, parênteses
+    //
+    //  Implementação: Shunting-Yard simplificado.
+    //  algOpStack: lista de Int (ordinal de AlgOp) — 0=+, 1=−, 2=×, 3=÷, 4=(
+    //  algValStack: lista de String (valor serializado de Hp12cDecimal)
+    //
+    //  Ao pressionar um operador binário em modo ALG:
+    //    1. Avalia qualquer op pendente no topo do stack com precedência >=
+    //    2. Empilha X corrente nos valores
+    //    3. Empilha o novo operador
+    //    4. Seta X para nova digitação (via stackLift=false)
+    //
+    //  Ao pressionar ENTER (=):
+    //    Avalia todos os operadores restantes; resultado fica em X.
+    //
+    //  '(' empilha sentinela com precedência 0; ')' avalia até '('.
+    //
+    //  Em modo RPN, ENTER e Arith funcionam como antes (sem mudança).
+    // ───────────────────────────────────────────────────────────────────────────
+
+    // Ordinal → precedência
+    private fun algPrec(opOrdinal: Int): Int = when (opOrdinal) {
+        0, 1 -> 1   // + e −
+        2, 3 -> 2   // × e ÷
+        else -> 0   // LPAREN sentinela
+    }
+
+    // Aplica um operador (ordinal) sobre dois Hp12cDecimal
+    private fun algApply(opOrdinal: Int, left: Hp12cDecimal, right: Hp12cDecimal): Hp12cDecimal =
+        when (opOrdinal) {
+            0 -> left + right
+            1 -> left - right
+            2 -> left * right
+            3 -> left / right   // ArithmeticException se right==0
+            else -> right       // nunca deve chegar aqui
+        }
+
+    /**
+     * Avalia o topo do op-stack (se a precedência do topo >= [minPrec]) e retorna
+     * o novo par (opStack, valStack, resultX). Repete até o stack esvaziar ou a
+     * precedência cair. Chamado recursivamente via `evalAlgStack`.
+     */
+    private fun evalAlgStack(
+        ops: List<Int>, vals: List<String>, currentX: Hp12cDecimal, minPrec: Int,
+    ): Triple<List<Int>, List<String>, Hp12cDecimal> {
+        if (ops.isEmpty()) return Triple(ops, vals, currentX)
+        val topOp = ops.last()
+        if (algPrec(topOp) < minPrec || topOp == 4 /* LPAREN */) return Triple(ops, vals, currentX)
+        val leftStr = vals.lastOrNull() ?: return Triple(ops, vals, currentX)
+        val left = Hp12cDecimal.of(leftStr)
+        val result = algApply(topOp, left, currentX)
+        return evalAlgStack(ops.dropLast(1), vals.dropLast(1), result, minPrec)
+    }
+
+    private fun reduceAlgebraicMode(
+        state: CalculatorState, event: Event.AlgebraicMode,
+    ): CalculatorState = when (event) {
+
+        // f EEX: alterna ALG ↔ RPN; limpa stacks de expressão ao desligar
+        Event.AlgebraicMode.Toggle -> state.copy(
+            algebraicMode = !state.algebraicMode,
+            algOpStack  = emptyList(),
+            algValStack = emptyList(),
+        )
+
+        // ENTER em modo ALG = "=" — avalia toda a expressão pendente
+        Event.AlgebraicMode.Equals -> {
+            try {
+                val x = state.stack.x
+                val (_, _, result) = evalAlgStack(state.algOpStack, state.algValStack, x, 0)
+                val newStack = state.stack.copy(lastX = x)
+                    .pushValue(result)
+                    .copy(canStoreToTvm = false)
+                state.copy(
+                    stack       = newStack,
+                    algOpStack  = emptyList(),
+                    algValStack = emptyList(),
+                )
+            } catch (e: ArithmeticException) {
+                state.copy(pendingError = Hp12cError.DivisionByZero)
+            }
+        }
+
+        // "(" — empilha sentinela LPAREN (ordinal 4)
+        Event.AlgebraicMode.LParen -> state.copy(
+            algOpStack  = state.algOpStack + 4,
+            algValStack = state.algValStack + state.stack.x.toString(),
+        ).let { it.copy(stack = it.stack.copy(stackLiftEnabled = false)) }
+
+        // ")" — avalia até encontrar o LPAREN mais próximo
+        Event.AlgebraicMode.RParen -> {
+            try {
+                val x = state.stack.x
+                val (newOps, newVals, result) = evalAlgStack(state.algOpStack, state.algValStack, x, 1)
+                // Remove o LPAREN sentinela
+                val finalOps  = if (newOps.lastOrNull() == 4) newOps.dropLast(1)  else newOps
+                val finalVals = if (newOps.lastOrNull() == 4) newVals.dropLast(1) else newVals
+                val newStack  = state.stack.copy(lastX = x).pushValue(result)
+                state.copy(stack = newStack, algOpStack = finalOps, algValStack = finalVals)
+            } catch (e: ArithmeticException) {
+                state.copy(pendingError = Hp12cError.DivisionByZero)
+            }
+        }
+    }
+
+    /**
+     * Wrapper que intercepta [Event.Arith] quando o modo ALG está ativo.
+     * Em RPN, delega a [reduceArith] sem alteração.
+     * Em ALG, implementa o shunting-yard: avalia ops de maior/igual precedência,
+     * depois empilha o novo operador e prepara X para nova digitação.
+     */
+    private fun reduceArithOrAlg(state: CalculatorState, event: Event.Arith): CalculatorState {
+        if (!state.algebraicMode) return reduceArith(state, event)
+
+        // CHS/Negate em ALG não é um operador binário — age igual ao RPN
+        if (event is Event.Arith.Negate) return reduceArith(state, event)
+
+        val opOrdinal = when (event) {
+            Event.Arith.Add      -> 0
+            Event.Arith.Subtract -> 1
+            Event.Arith.Multiply -> 2
+            Event.Arith.Divide   -> 3
+            else                 -> return reduceArith(state, event)
+        }
+
+        return try {
+            val x = state.stack.x
+            val prec = algPrec(opOrdinal)
+            // Avalia ops pendentes com precedência >= à atual
+            val (newOps, newVals, reducedX) = evalAlgStack(state.algOpStack, state.algValStack, x, prec)
+            // Empilha o valor reduzido e o novo operador
+            val updatedOps  = newOps  + opOrdinal
+            val updatedVals = newVals + reducedX.toString()
+            // Zera X para nova digitação (stackLift=false → próximo dígito sobrescreve)
+            val newStack = state.stack.copy(
+                x                = Hp12cDecimal.ZERO,
+                stackLiftEnabled = false,
+                lastX            = x,
+            )
+            state.copy(stack = newStack, algOpStack = updatedOps, algValStack = updatedVals)
+        } catch (e: ArithmeticException) {
+            state.copy(pendingError = Hp12cError.DivisionByZero)
+        }
+    }
+
+    /**
+     * Wrapper que intercepta [Event.StackOp.Enter] quando o modo ALG está ativo,
+     * tratando-o como "=" (avalia a expressão). Em RPN ou para outros stack ops,
+     * delega a [reduceStackOp] normalmente.
+     */
+    private fun reduceStackOpOrAlgEquals(state: CalculatorState, event: Event.StackOp): CalculatorState {
+        if (state.algebraicMode && event == Event.StackOp.Enter) {
+            return reduceAlgebraicMode(state, Event.AlgebraicMode.Equals)
+        }
+        return reduceStackOp(state, event)
+    }
 
     // ───────────────────────────────────────────────────────────────────────────
     //  Arith — +, −, ×, ÷, CHS (fora de entrada)
@@ -593,18 +752,20 @@ internal class DefaultEngine : CalculatorEngine {
 
         // `i` em decimal por período — conversão única aqui, já documentada em formulas/tvm.md §3.
         val iDec = iPct / HUNDRED
-        // `n` como inteiro: Fase 1 suporta apenas `n` inteiro (ver Seção 4 de formulas/tvm.md —
-        // variantes fracionárias ficam para Fase 2 junto com o flag C). `powInt` exige `Int`.
-        val n = nDecimal.toIntTruncated()
+        // `n` pode ter parte fracionária; flag C controla juros compostos vs simples na fração.
+        // Docs: formulas/tvm.md §4 — Apêndice E p. 198 do manual.
+        val nInt  = nDecimal.toIntTruncated()
+        val nFrac = nDecimal - Hp12cDecimal.of(nInt)   // FRAC(n) ≥ 0
+        val useCompound = state.compoundFractionFlag
         val isBegin = f.mode == TvmMode.BEGIN
 
         val result = try {
             when (event) {
-                Event.Financial.Solve.Fv  -> computeFv(n, iDec, pv, pmt, isBegin)
-                Event.Financial.Solve.Pv  -> computePv(n, iDec, pmt, fv, isBegin)
-                Event.Financial.Solve.Pmt -> computePmt(n, iDec, pv, fv, isBegin)
+                Event.Financial.Solve.Fv  -> computeFv(nInt, nFrac, iDec, pv, pmt, isBegin, useCompound)
+                Event.Financial.Solve.Pv  -> computePv(nInt, nFrac, iDec, pmt, fv, isBegin, useCompound)
+                Event.Financial.Solve.Pmt -> computePmt(nInt, nFrac, iDec, pv, fv, isBegin, useCompound)
                 Event.Financial.Solve.N   -> computeN(iDec, pv, pmt, fv, isBegin)
-                Event.Financial.Solve.I   -> computeI(n, pv, pmt, fv, isBegin)
+                Event.Financial.Solve.I   -> computeI(nInt, nFrac, pv, pmt, fv, isBegin, useCompound)
             }
         } catch (e: TvmSignMismatch) {
             // Combinação de sinais inviável (PV e FV não opostos, ratio ≤ 0 no argumento de ln
@@ -633,54 +794,76 @@ internal class DefaultEngine : CalculatorEngine {
     }
 
     /**
-     * `FV = -PV·(1+i)^n - (1+iS)·PMT·[((1+i)^n - 1)/i]`.
-     * Ramo degenerado `i = 0`: `FV = -PV - n·PMT`.
+     * Fator de escala do PV para a parte fracionária de `n` (Apêndice E, p. 198).
+     *
+     * - **Juros simples** (flag C off): `1 + i·FRAC(n)`
+     * - **Juros compostos** (flag C on): `(1+i)^FRAC(n)`
+     *
+     * Quando `FRAC(n) = 0`, ambos retornam 1 e a equação reduz à canônica inteira.
+     */
+    private fun pvFracFactor(i: Hp12cDecimal, nFrac: Hp12cDecimal, useCompound: Boolean): Hp12cDecimal =
+        if (useCompound) (Hp12cDecimal.ONE + i).pow(nFrac)
+        else Hp12cDecimal.ONE + i * nFrac
+
+    /**
+     * `FV` com suporte a `n` fracionário (Apêndice E, p. 198 — `formulas/tvm.md §4`).
+     *
+     * `FV = -PV · pvFrac · (1+i)^nInt - (1+iS)·PMT·[((1+i)^nInt - 1)/i]`
+     *
+     * Ramo degenerado `i = 0`: `FV = -PV - (nInt+nFrac)·PMT`.
      */
     private fun computeFv(
-        n: Int, i: Hp12cDecimal, pv: Hp12cDecimal, pmt: Hp12cDecimal, isBegin: Boolean,
+        nInt: Int, nFrac: Hp12cDecimal, i: Hp12cDecimal,
+        pv: Hp12cDecimal, pmt: Hp12cDecimal, isBegin: Boolean, useCompound: Boolean,
     ): Hp12cDecimal {
-        if (i.isZero()) {
-            return -pv - Hp12cDecimal.of(n) * pmt
-        }
-        val factor = (Hp12cDecimal.ONE + i).powInt(n)        // (1+i)^n
-        val annuity = (factor - Hp12cDecimal.ONE) / i        // ((1+i)^n - 1)/i
-        val begAdj = if (isBegin) Hp12cDecimal.ONE + i else Hp12cDecimal.ONE
-        return -pv * factor - begAdj * pmt * annuity
+        val nTotal = Hp12cDecimal.of(nInt) + nFrac
+        if (i.isZero()) return -pv - nTotal * pmt
+        val factorInt = (Hp12cDecimal.ONE + i).powInt(nInt)          // (1+i)^nInt
+        val annuity   = (factorInt - Hp12cDecimal.ONE) / i            // ((1+i)^nInt - 1)/i
+        val begAdj    = if (isBegin) Hp12cDecimal.ONE + i else Hp12cDecimal.ONE
+        val pvFrac    = pvFracFactor(i, nFrac, useCompound)
+        return -pv * pvFrac * factorInt - begAdj * pmt * annuity
     }
 
     /**
-     * `PV = -(1+iS)·PMT·[(1-(1+i)^(-n))/i] - FV·(1+i)^(-n)`.
-     * Ramo degenerado `i = 0`: `PV = -FV - n·PMT`.
+     * `PV` com suporte a `n` fracionário (Apêndice E, p. 198 — `formulas/tvm.md §4`).
+     *
+     * `PV = [-(1+iS)·PMT·(1-(1+i)^(-nInt))/i - FV·(1+i)^(-nInt)] / pvFrac`
+     *
+     * Ramo degenerado `i = 0`: `PV = -FV - (nInt+nFrac)·PMT`.
      */
     private fun computePv(
-        n: Int, i: Hp12cDecimal, pmt: Hp12cDecimal, fv: Hp12cDecimal, isBegin: Boolean,
+        nInt: Int, nFrac: Hp12cDecimal, i: Hp12cDecimal,
+        pmt: Hp12cDecimal, fv: Hp12cDecimal, isBegin: Boolean, useCompound: Boolean,
     ): Hp12cDecimal {
-        if (i.isZero()) {
-            return -fv - Hp12cDecimal.of(n) * pmt
-        }
-        val discount = (Hp12cDecimal.ONE + i).powInt(-n)     // (1+i)^(-n)
-        val annuity = (Hp12cDecimal.ONE - discount) / i      // (1 - (1+i)^(-n)) / i
-        val begAdj = if (isBegin) Hp12cDecimal.ONE + i else Hp12cDecimal.ONE
-        return -begAdj * pmt * annuity - fv * discount
+        val nTotal = Hp12cDecimal.of(nInt) + nFrac
+        if (i.isZero()) return -fv - nTotal * pmt
+        val discount = (Hp12cDecimal.ONE + i).powInt(-nInt)           // (1+i)^(-nInt)
+        val annuity  = (Hp12cDecimal.ONE - discount) / i              // (1-(1+i)^(-nInt))/i
+        val begAdj   = if (isBegin) Hp12cDecimal.ONE + i else Hp12cDecimal.ONE
+        val pvFrac   = pvFracFactor(i, nFrac, useCompound)
+        return (-begAdj * pmt * annuity - fv * discount) / pvFrac
     }
 
     /**
-     * `PMT = (-PV·(1+i)^n - FV) / ((1+iS)·[((1+i)^n - 1)/i])`.
-     * Ramo degenerado `i = 0`: `PMT = -(PV + FV) / n`.
+     * `PMT` com suporte a `n` fracionário (Apêndice E, p. 198 — `formulas/tvm.md §4`).
      *
-     * Se `n = 0` também (caso absurdo), propaga `ArithmeticException` no `/ n` e o caller
-     * traduz para `Hp12cError.TvmNoConverge`.
+     * `PMT = (-PV·pvFrac·(1+i)^nInt - FV) / ((1+iS)·((1+i)^nInt - 1)/i)`
+     *
+     * Ramo degenerado `i = 0`: `PMT = -(PV + FV) / (nInt+nFrac)`.
+     * Se `n = 0` também, propaga `ArithmeticException` e o caller mapeia para TvmNoConverge.
      */
     private fun computePmt(
-        n: Int, i: Hp12cDecimal, pv: Hp12cDecimal, fv: Hp12cDecimal, isBegin: Boolean,
+        nInt: Int, nFrac: Hp12cDecimal, i: Hp12cDecimal,
+        pv: Hp12cDecimal, fv: Hp12cDecimal, isBegin: Boolean, useCompound: Boolean,
     ): Hp12cDecimal {
-        if (i.isZero()) {
-            return -(pv + fv) / Hp12cDecimal.of(n)
-        }
-        val factor = (Hp12cDecimal.ONE + i).powInt(n)        // (1+i)^n
-        val annuity = (factor - Hp12cDecimal.ONE) / i        // ((1+i)^n - 1)/i
-        val begAdj = if (isBegin) Hp12cDecimal.ONE + i else Hp12cDecimal.ONE
-        return (-pv * factor - fv) / (begAdj * annuity)
+        val nTotal = Hp12cDecimal.of(nInt) + nFrac
+        if (i.isZero()) return -(pv + fv) / nTotal
+        val factorInt = (Hp12cDecimal.ONE + i).powInt(nInt)           // (1+i)^nInt
+        val annuity   = (factorInt - Hp12cDecimal.ONE) / i            // ((1+i)^nInt - 1)/i
+        val begAdj    = if (isBegin) Hp12cDecimal.ONE + i else Hp12cDecimal.ONE
+        val pvFrac    = pvFracFactor(i, nFrac, useCompound)
+        return (-pv * pvFrac * factorInt - fv) / (begAdj * annuity)
     }
 
     /**
@@ -743,17 +926,26 @@ internal class DefaultEngine : CalculatorEngine {
      * Nota sobre `begAdj` no caso 2: como `begAdj = (1+i)` em BEGIN, ele depende de `i` e
      * participa da derivada. A diferença central cuida disso sem precisar de derivação analítica.
      */
+    /**
+     * Resolve `i` na equação TVM com suporte a `n` fracionário (Apêndice E, p. 198).
+     *
+     * - PMT=0 → forma fechada: `i = (-FV/PV)^(1/(nInt+nFrac)) - 1`.
+     *   Usa `nDecimal = nInt + nFrac` como expoente via `pow`.
+     * - PMT≠0 → Newton-Raphson sobre `tvmResidual` com `nInt`, `nFrac`, `useCompound`.
+     */
     private fun computeI(
-        n: Int, pv: Hp12cDecimal, pmt: Hp12cDecimal, fv: Hp12cDecimal, isBegin: Boolean,
+        nInt: Int, nFrac: Hp12cDecimal, pv: Hp12cDecimal, pmt: Hp12cDecimal, fv: Hp12cDecimal,
+        isBegin: Boolean, useCompound: Boolean,
     ): Hp12cDecimal {
-        if (n <= 0) throw TvmSignMismatch()
+        val nTotal = Hp12cDecimal.of(nInt) + nFrac
+        if (nTotal.compareTo(Hp12cDecimal.ZERO) <= 0) throw TvmSignMismatch()
 
         // Caminho 1: forma fechada quando PMT = 0.
         if (pmt.isZero()) {
             if (pv.isZero()) throw TvmSignMismatch()
             val ratio = -fv / pv
             if (ratio.compareTo(Hp12cDecimal.ZERO) <= 0) throw TvmSignMismatch()
-            val iDec = (ratio.ln() / Hp12cDecimal.of(n)).exp() - Hp12cDecimal.ONE
+            val iDec = (ratio.ln() / nTotal).exp() - Hp12cDecimal.ONE
             return iDec * HUNDRED
         }
 
@@ -764,12 +956,12 @@ internal class DefaultEngine : CalculatorEngine {
         var iDec = Hp12cDecimal.of("0.01")              // chute inicial 1%
 
         repeat(100) {
-            val fVal = tvmResidual(iDec, n, pv, pmt, fv, isBegin)
+            val fVal = tvmResidual(iDec, nInt, nFrac, pv, pmt, fv, isBegin, useCompound)
             val fAbs = if (fVal.compareTo(Hp12cDecimal.ZERO) < 0) -fVal else fVal
             if (fAbs < tolerance) return iDec * HUNDRED
 
-            val fPlus  = tvmResidual(iDec + h, n, pv, pmt, fv, isBegin)
-            val fMinus = tvmResidual(iDec - h, n, pv, pmt, fv, isBegin)
+            val fPlus  = tvmResidual(iDec + h, nInt, nFrac, pv, pmt, fv, isBegin, useCompound)
+            val fMinus = tvmResidual(iDec - h, nInt, nFrac, pv, pmt, fv, isBegin, useCompound)
             val df = (fPlus - fMinus) / (h * two)
             if (df.isZero()) throw ArithmeticException("Newton-Raphson: derivada nula")
             iDec -= fVal / df
@@ -778,22 +970,27 @@ internal class DefaultEngine : CalculatorEngine {
     }
 
     /**
-     * Resíduo da equação TVM canônica (Seção 3 de `formulas/tvm.md`). Retorna zero exatamente
-     * quando `iDec` é a taxa-solução. Usado como `f(i)` do Newton-Raphson em [computeI].
+     * Resíduo da equação TVM com suporte a `n` fracionário (Apêndice E, p. 198).
+     * Retorna zero quando `iDec` é a taxa-solução.
      *
-     * Limite degenerado `i = 0`: a equação vira `PV + n·PMT + FV`, forma linear.
+     * - `i = 0`: degenera para `PV·pvFrac + (nInt+nFrac)·PMT·(1+iS) + FV` ≈ `PV+n·PMT+FV`.
+     * - Flag C off (juros simples na fração): pvFrac = `1 + i·nFrac`.
+     * - Flag C on  (juros compostos na fração): pvFrac = `(1+i)^nFrac`.
      */
     private fun tvmResidual(
-        iDec: Hp12cDecimal, n: Int, pv: Hp12cDecimal, pmt: Hp12cDecimal, fv: Hp12cDecimal,
-        isBegin: Boolean,
+        iDec: Hp12cDecimal, nInt: Int, nFrac: Hp12cDecimal,
+        pv: Hp12cDecimal, pmt: Hp12cDecimal, fv: Hp12cDecimal,
+        isBegin: Boolean, useCompound: Boolean,
     ): Hp12cDecimal {
+        val nTotal = Hp12cDecimal.of(nInt) + nFrac
         if (iDec.isZero()) {
-            return pv + Hp12cDecimal.of(n) * pmt + fv
+            return pv + nTotal * pmt + fv
         }
-        val discount = (Hp12cDecimal.ONE + iDec).powInt(-n)
-        val annuity = (Hp12cDecimal.ONE - discount) / iDec
-        val begAdj = if (isBegin) Hp12cDecimal.ONE + iDec else Hp12cDecimal.ONE
-        return pv + begAdj * pmt * annuity + fv * discount
+        val discount = (Hp12cDecimal.ONE + iDec).powInt(-nInt)
+        val annuity  = (Hp12cDecimal.ONE - discount) / iDec
+        val begAdj   = if (isBegin) Hp12cDecimal.ONE + iDec else Hp12cDecimal.ONE
+        val pvFrac   = pvFracFactor(iDec, nFrac, useCompound)
+        return pv * pvFrac + begAdj * pmt * annuity + fv * discount
     }
 
     /**
@@ -1844,13 +2041,17 @@ internal class DefaultEngine : CalculatorEngine {
             Event.Program.TogglePrgmMode ->
                 state.copy(programState = ProgramState.Editing(state.programMemory.steps.size))
 
-            Event.Program.RunStop ->
+            Event.Program.RunStop -> {
+                val startPc = (state.programState as? ProgramState.Idle)?.startPc ?: 0
                 if (state.programMemory.steps.isEmpty()) state
-                else executeProgram(state.commitEntry(), 0, emptyList())
+                else executeProgram(state.commitEntry(), startPc, emptyList())
+            }
 
-            Event.Program.SingleStep ->
+            Event.Program.SingleStep -> {
+                val startPc = (state.programState as? ProgramState.Idle)?.startPc ?: 0
                 if (state.programMemory.steps.isEmpty()) state
-                else executeSingleStep(state.commitEntry(), 0)
+                else executeSingleStep(state.commitEntry(), startPc)
+            }
 
             Event.Program.BackStep   -> state  // noop em Idle
             Event.Program.ClearProgram -> state  // só efetivo em Editing
@@ -1870,14 +2071,11 @@ internal class DefaultEngine : CalculatorEngine {
             is Event.Program.Lbl   -> state  // noop em Idle
         }
 
-    /** `GTO nnn` em Idle: posiciona o cursor (sem executar) para o próximo R/S. */
+    /** `GTO nnn` em Idle: posiciona o startPc para o próximo R/S sem executar. */
     private fun positionCursor(state: CalculatorState, target: ProgramTarget): CalculatorState {
         val line = resolveTarget(target, state.programMemory)
         return if (line < 0) state.copy(pendingError = Hp12cError.InvalidGoto)
-        else state.copy(programState = ProgramState.Editing(line))
-            .let { it.copy(programState = ProgramState.Idle) }
-            // Mantemos Idle mas o próximo RunStop deve começar do `line`.
-            // Para simplificar: RunStop sempre começa em pc=0 (TODO passo-27: GTO startPc).
+        else state.copy(programState = ProgramState.Idle(startPc = line))
     }
 
     // ─── Editing ─────────────────────────────────────────────────────────────
@@ -1889,7 +2087,7 @@ internal class DefaultEngine : CalculatorEngine {
     ): CalculatorState = when (event) {
 
         Event.Program.TogglePrgmMode ->
-            state.copy(programState = ProgramState.Idle)
+            state.copy(programState = ProgramState.Idle())
 
         Event.Program.ClearProgram ->
             state.copy(programMemory = ProgramMemory(), programState = ProgramState.Editing(0))
@@ -1904,7 +2102,7 @@ internal class DefaultEngine : CalculatorEngine {
 
         Event.Program.RunStop ->
             // Sai do modo PRGM e inicia execução
-            executeProgram(state.copy(programState = ProgramState.Idle).commitEntry(), 0, emptyList())
+            executeProgram(state.copy(programState = ProgramState.Idle()).commitEntry(), 0, emptyList())
 
         // Inserção de passos de controle de fluxo
         is Event.Program.Goto  -> insertStep(state, editing, ProgramStep.Goto(event.target))
@@ -1952,7 +2150,7 @@ internal class DefaultEngine : CalculatorEngine {
 
     private fun reduceProgramRunning(state: CalculatorState, event: Event.Program): CalculatorState =
         when (event) {
-            Event.Program.RunStop -> state.copy(programState = ProgramState.Idle)
+            Event.Program.RunStop -> state.copy(programState = ProgramState.Idle())
             else -> state  // outros eventos ignorados durante execução
         }
 
@@ -1973,16 +2171,16 @@ internal class DefaultEngine : CalculatorEngine {
             val ps = s.programState as? ProgramState.Running ?: break
             if (ps.pc >= s.programMemory.steps.size) {
                 // Fim do programa — para (equivalente a RTN com stack vazio)
-                s = s.copy(programState = ProgramState.Idle)
+                s = s.copy(programState = ProgramState.Idle())
                 break
             }
             if (ticks++ > MAX_EXEC_STEPS) {
-                s = s.copy(programState = ProgramState.Idle, pendingError = Hp12cError.ProgramOverflow)
+                s = s.copy(programState = ProgramState.Idle(), pendingError = Hp12cError.ProgramOverflow)
                 break
             }
             s = executeStep(s, ps)
             if (s.pendingError != null) {
-                s = s.copy(programState = ProgramState.Idle)
+                s = s.copy(programState = ProgramState.Idle())
                 break
             }
         }
@@ -1996,7 +2194,7 @@ internal class DefaultEngine : CalculatorEngine {
         val ps = ProgramState.Running(pc, emptyList())
         val s  = executeStep(state.copy(programState = ps), ps)
         // Após SST, ficamos em Idle independente de onde o PC ficou
-        return s.copy(programState = ProgramState.Idle)
+        return s.copy(programState = ProgramState.Idle())
     }
 
     /** Executa um único passo, retornando o novo estado (com programState atualizado). */
@@ -2008,7 +2206,7 @@ internal class DefaultEngine : CalculatorEngine {
             is ProgramStep.KeyStep -> {
                 // R/S armazenado no programa = parada explícita
                 if (step.keyCode == ProgramKeyCode.K_RUNSTOP) {
-                    return state.copy(programState = ProgramState.Idle)
+                    return state.copy(programState = ProgramState.Idle())
                 }
                 val event = ProgramKeyCode.decode(step)
                     ?: return state.copy(programState = ProgramState.Running(nextPc, runState.returnStack))
@@ -2038,7 +2236,7 @@ internal class DefaultEngine : CalculatorEngine {
 
             ProgramStep.Return -> {
                 if (runState.returnStack.isEmpty()) {
-                    state.copy(programState = ProgramState.Idle)
+                    state.copy(programState = ProgramState.Idle())
                 } else {
                     state.copy(programState = ProgramState.Running(
                         runState.returnStack.last(),
@@ -2109,7 +2307,7 @@ internal class DefaultEngine : CalculatorEngine {
         val usedSteps = state.programMemory.steps.size
         val s = state.copy(
             stack = state.stack.copy(x = Hp12cDecimal.of(usedSteps)),
-            programState = ProgramState.Idle,
+            programState = ProgramState.Idle(),
         )
         return s
     }

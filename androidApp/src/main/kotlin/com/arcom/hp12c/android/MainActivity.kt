@@ -1,4 +1,4 @@
-package com.arcom.hp12c.android
+package br.com.alyssonmyller.calculus.android
 
 import android.app.Application
 import android.os.Bundle
@@ -19,7 +19,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import com.arcom.hp12c.android.ui.Hp12cPlatinumRealisticScreen
+import br.com.alyssonmyller.calculus.android.ui.Hp12cPlatinumRealisticScreen
 import androidx.core.graphics.toColorInt
 
 /**

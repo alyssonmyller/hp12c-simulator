@@ -1,11 +1,11 @@
-package com.arcom.hp12c.engine.format
+package br.com.alyssonmyller.calculus.engine.format
 
-import com.arcom.hp12c.engine.error.Hp12cError
-import com.arcom.hp12c.engine.math.Hp12cDecimal
-import com.arcom.hp12c.engine.state.CalculatorState
-import com.arcom.hp12c.engine.state.DisplayFormat
-import com.arcom.hp12c.engine.state.NumericSeparator
-import com.arcom.hp12c.engine.state.Stack
+import br.com.alyssonmyller.calculus.engine.error.Hp12cError
+import br.com.alyssonmyller.calculus.engine.math.Hp12cDecimal
+import br.com.alyssonmyller.calculus.engine.state.CalculatorState
+import br.com.alyssonmyller.calculus.engine.state.DisplayFormat
+import br.com.alyssonmyller.calculus.engine.state.NumericSeparator
+import br.com.alyssonmyller.calculus.engine.state.Stack
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

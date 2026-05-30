@@ -1,4 +1,4 @@
-package com.arcom.hp12c.testing
+package br.com.alyssonmyller.calculus.testing
 
 /**
  * Leitura de recursos textuais do classpath/bundle de testes em multiplataforma.

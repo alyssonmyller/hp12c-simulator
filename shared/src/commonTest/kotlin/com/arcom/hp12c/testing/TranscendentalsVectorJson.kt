@@ -1,4 +1,4 @@
-package com.arcom.hp12c.testing
+package br.com.alyssonmyller.calculus.testing
 
 import kotlinx.serialization.Serializable
 
@@ -18,8 +18,8 @@ import kotlinx.serialization.Serializable
  *   Y=300, X=14. Níveis não citados são 0 (default após `f CLEAR REG`).
  *
  * - **[operation]**: string literal do JSON que mapeia para uma instância concreta de
- *   [com.arcom.hp12c.engine.event.Event.Transcendental] ou
- *   [com.arcom.hp12c.engine.event.Event.Percent]. O mapping é feito no runner do teste
+ *   [br.com.alyssonmyller.calculus.engine.event.Event.Transcendental] ou
+ *   [br.com.alyssonmyller.calculus.engine.event.Event.Percent]. O mapping é feito no runner do teste
  *   (não em código de produção) — dupla de freios: se alguém renomear o literal do JSON,
  *   o teste quebra explícito em vez de silenciosamente passar-sem-cobertura.
  *

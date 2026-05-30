@@ -1,4 +1,4 @@
-package com.arcom.hp12c.testing
+package br.com.alyssonmyller.calculus.testing
 
 /**
  * Impl JVM/Android de [readTestResource]. Serve os dois targets porque o

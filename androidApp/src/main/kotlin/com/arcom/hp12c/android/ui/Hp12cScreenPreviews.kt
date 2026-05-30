@@ -1,14 +1,14 @@
-package com.arcom.hp12c.android.ui
+package br.com.alyssonmyller.calculus.android.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewParameter
 import androidx.compose.ui.tooling.preview.PreviewParameterProvider
-import com.arcom.hp12c.engine.CalculatorEngine
-import com.arcom.hp12c.engine.state.ProgramMemory
-import com.arcom.hp12c.engine.state.ProgramState
-import com.arcom.hp12c.engine.state.ProgramStep
-import com.arcom.hp12c.engine.state.TvmMode
+import br.com.alyssonmyller.calculus.engine.CalculatorEngine
+import br.com.alyssonmyller.calculus.engine.state.ProgramMemory
+import br.com.alyssonmyller.calculus.engine.state.ProgramState
+import br.com.alyssonmyller.calculus.engine.state.ProgramStep
+import br.com.alyssonmyller.calculus.engine.state.TvmMode
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Provider de parâmetros de preview

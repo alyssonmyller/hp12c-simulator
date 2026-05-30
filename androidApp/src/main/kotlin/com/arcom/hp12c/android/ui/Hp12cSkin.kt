@@ -1,4 +1,4 @@
-package com.arcom.hp12c.android.ui
+package br.com.alyssonmyller.calculus.android.ui
 
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color

@@ -1,4 +1,4 @@
-package com.arcom.hp12c.engine.math
+package br.com.alyssonmyller.calculus.engine.math
 
 import java.math.BigDecimal
 import java.math.MathContext

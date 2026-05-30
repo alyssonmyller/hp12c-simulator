@@ -1,10 +1,10 @@
-package com.arcom.hp12c.engine
+package br.com.alyssonmyller.calculus.engine
 
-import com.arcom.hp12c.engine.error.Hp12cError
-import com.arcom.hp12c.engine.event.Event
-import com.arcom.hp12c.engine.math.Hp12cDecimal
-import com.arcom.hp12c.engine.state.CalculatorState
-import com.arcom.hp12c.engine.state.TvmMode
+import br.com.alyssonmyller.calculus.engine.error.Hp12cError
+import br.com.alyssonmyller.calculus.engine.event.Event
+import br.com.alyssonmyller.calculus.engine.math.Hp12cDecimal
+import br.com.alyssonmyller.calculus.engine.state.CalculatorState
+import br.com.alyssonmyller.calculus.engine.state.TvmMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull

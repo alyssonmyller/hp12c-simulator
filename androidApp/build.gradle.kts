@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace  = "com.arcom.hp12c.android"
+    namespace  = "br.com.alyssonmyller.calculus"
     compileSdk = libs.versions.compileSdk.get().toInt()
 
     defaultConfig {
-        applicationId = "com.arcom.hp12c"
+        applicationId = "br.com.alyssonmyller.calculus"
         minSdk        = libs.versions.minSdk.get().toInt()
         targetSdk     = libs.versions.targetSdk.get().toInt()
         versionCode   = 1

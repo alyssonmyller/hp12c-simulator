@@ -61,7 +61,7 @@ kotlin {
 }
 
 android {
-    namespace  = "com.arcom.hp12c.shared"
+    namespace  = "br.com.alyssonmyller.calculus.shared"
     compileSdk = libs.versions.compileSdk.get().toInt()
 
     defaultConfig {

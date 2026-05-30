@@ -1,4 +1,4 @@
-package com.arcom.hp12c.engine.math
+package br.com.alyssonmyller.calculus.engine.math
 
 /**
  * Número decimal com **10 dígitos significativos** e arredondamento **HALF_EVEN** (banker's) —

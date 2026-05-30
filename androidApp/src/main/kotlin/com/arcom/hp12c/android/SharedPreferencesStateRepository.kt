@@ -1,10 +1,10 @@
-package com.arcom.hp12c.android
+package br.com.alyssonmyller.calculus.android
 
 import android.content.Context
-import com.arcom.hp12c.engine.persistence.StateRepository
-import com.arcom.hp12c.engine.persistence.decodeState
-import com.arcom.hp12c.engine.persistence.encodeState
-import com.arcom.hp12c.engine.state.CalculatorState
+import br.com.alyssonmyller.calculus.engine.persistence.StateRepository
+import br.com.alyssonmyller.calculus.engine.persistence.decodeState
+import br.com.alyssonmyller.calculus.engine.persistence.encodeState
+import br.com.alyssonmyller.calculus.engine.state.CalculatorState
 
 private const val PREFS_NAME = "hp12c_state"
 private const val KEY_STATE  = "state_json"

@@ -1,4 +1,4 @@
-package com.arcom.hp12c.android.ui
+package br.com.alyssonmyller.calculus.android.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -33,11 +33,11 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.isUnspecified
 import androidx.compose.ui.unit.sp
-import com.arcom.hp12c.engine.CalculatorEngine
-import com.arcom.hp12c.engine.event.Event
-import com.arcom.hp12c.engine.state.CalculatorState
-import com.arcom.hp12c.engine.state.NumericSeparator
-import com.arcom.hp12c.engine.state.TvmMode
+import br.com.alyssonmyller.calculus.engine.CalculatorEngine
+import br.com.alyssonmyller.calculus.engine.event.Event
+import br.com.alyssonmyller.calculus.engine.state.CalculatorState
+import br.com.alyssonmyller.calculus.engine.state.NumericSeparator
+import br.com.alyssonmyller.calculus.engine.state.TvmMode
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Tela principal — HP 12C Platinum Realistic
@@ -230,8 +230,7 @@ private fun resolveRealisticKey(
 
 /** Lookup de KeyDef pelo label principal — para despacho de f/g shift. */
 private val LABEL_TO_KEY_DEF: Map<String, KeyDef> by lazy {
-    (KEY_ROWS_PORTRAIT + KEY_ROWS_LANDSCAPE)
-        .flatten()
+    ((KEY_ROWS_PORTRAIT + KEY_ROWS_LANDSCAPE).flatten() + KEY_DEFS_LOOKUP_ONLY)
         .associateBy { it.label }
 }
 
@@ -311,9 +310,11 @@ private fun MetallicHeader(
                             Spacer(Modifier.width(6.dp))
                             IndicatorChip("g",     active = shift == ShiftState.G_SHIFT)
                             Spacer(Modifier.weight(1f))
+                            IndicatorChip("ALG",   active = calcState.algebraicMode)
+                            Spacer(Modifier.width(6.dp))
                             IndicatorChip("BEGIN", active = calcState.financial.mode == TvmMode.BEGIN)
                             Spacer(Modifier.width(6.dp))
-                            IndicatorChip("PRGM",  active = calcState.programState is com.arcom.hp12c.engine.state.ProgramState.Editing)
+                            IndicatorChip("PRGM",  active = calcState.programState is br.com.alyssonmyller.calculus.engine.state.ProgramState.Editing)
                             Spacer(Modifier.width(6.dp))
                             IndicatorChip("RUN",   active = isRunning)
                         }

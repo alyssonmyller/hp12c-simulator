@@ -1,4 +1,4 @@
-package com.arcom.hp12c.android
+package br.com.alyssonmyller.calculus.android
 
 import android.content.Context
 

@@ -1,12 +1,12 @@
-package com.arcom.hp12c.engine.format
+package br.com.alyssonmyller.calculus.engine.format
 
-import com.arcom.hp12c.engine.state.CalculatorState
-import com.arcom.hp12c.engine.state.DisplayFormat
-import com.arcom.hp12c.engine.state.NumericSeparator
+import br.com.alyssonmyller.calculus.engine.state.CalculatorState
+import br.com.alyssonmyller.calculus.engine.state.DisplayFormat
+import br.com.alyssonmyller.calculus.engine.state.NumericSeparator
 import kotlin.math.abs
 
 /**
- * Conversão `CalculatorState → String` do visor. Separado de [com.arcom.hp12c.engine.DefaultEngine]
+ * Conversão `CalculatorState → String` do visor. Separado de [br.com.alyssonmyller.calculus.engine.DefaultEngine]
  * para manter a aritmética de apresentação (separador de milhar, sinal de "-", notação científica
  * com espaço/menos entre mantissa e expoente) testável isoladamente.
  *

@@ -1,4 +1,4 @@
-package com.arcom.hp12c.android.ui
+package br.com.alyssonmyller.calculus.android.ui
 
 import android.content.res.Configuration
 import androidx.compose.foundation.background
@@ -40,12 +40,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.arcom.hp12c.engine.CalculatorEngine
-import com.arcom.hp12c.engine.event.Event
-import com.arcom.hp12c.engine.state.CalculatorState
-import com.arcom.hp12c.engine.state.NumericSeparator
-import com.arcom.hp12c.engine.state.ProgramState
-import com.arcom.hp12c.engine.state.TvmMode
+import br.com.alyssonmyller.calculus.engine.CalculatorEngine
+import br.com.alyssonmyller.calculus.engine.event.Event
+import br.com.alyssonmyller.calculus.engine.state.CalculatorState
+import br.com.alyssonmyller.calculus.engine.state.NumericSeparator
+import br.com.alyssonmyller.calculus.engine.state.ProgramState
+import br.com.alyssonmyller.calculus.engine.state.TvmMode
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Tokens de layout responsivo

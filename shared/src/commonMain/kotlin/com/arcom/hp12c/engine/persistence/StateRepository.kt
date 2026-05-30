@@ -1,11 +1,11 @@
-package com.arcom.hp12c.engine.persistence
+package br.com.alyssonmyller.calculus.engine.persistence
 
-import com.arcom.hp12c.engine.state.CalculatorState
+import br.com.alyssonmyller.calculus.engine.state.CalculatorState
 
 /**
  * Contrato de persistência da memória contínua da HP 12C.
  *
- * A engine ([com.arcom.hp12c.engine.CalculatorEngine]) é um reducer puro — ela não tem I/O.
+ * A engine ([br.com.alyssonmyller.calculus.engine.CalculatorEngine]) é um reducer puro — ela não tem I/O.
  * Persistência é responsabilidade exclusiva da camada de plataforma.
  * Ver `arquitetura/persistence.md` §1 e §5.
  *
@@ -35,7 +35,7 @@ interface StateRepository {
 
     /**
      * Persiste o snapshot normalizado. Deve receber o resultado de
-     * [com.arcom.hp12c.engine.CalculatorEngine.normalizeForPersistence] para garantir
+     * [br.com.alyssonmyller.calculus.engine.CalculatorEngine.normalizeForPersistence] para garantir
      * que `entryBuffer == null` e `pendingError == null`.
      */
     fun save(state: CalculatorState)

@@ -1,8 +1,8 @@
-package com.arcom.hp12c.engine.persistence
+package br.com.alyssonmyller.calculus.engine.persistence
 
-import com.arcom.hp12c.engine.math.Hp12cDecimal
-import com.arcom.hp12c.engine.math.Hp12cDecimalSerializer
-import com.arcom.hp12c.engine.state.CalculatorState
+import br.com.alyssonmyller.calculus.engine.math.Hp12cDecimal
+import br.com.alyssonmyller.calculus.engine.math.Hp12cDecimalSerializer
+import br.com.alyssonmyller.calculus.engine.state.CalculatorState
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.contextual

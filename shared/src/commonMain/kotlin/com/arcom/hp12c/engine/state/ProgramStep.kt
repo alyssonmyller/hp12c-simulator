@@ -1,4 +1,4 @@
-package com.arcom.hp12c.engine.state
+package br.com.alyssonmyller.calculus.engine.state
 
 import kotlinx.serialization.Serializable
 
@@ -143,8 +143,14 @@ data class ProgramMemory(
  */
 sealed class ProgramState {
 
-    /** Estado normal: calculadora fora do modo de programação. */
-    data object Idle : ProgramState()
+    /**
+     * Estado normal: calculadora fora do modo de programação.
+     *
+     * [startPc] é o passo em que o próximo R/S iniciará a execução.
+     * Normalmente 0 (início do programa), mas é atualizado pelo `GTO nnn` em Idle
+     * para que o próximo R/S comece no passo apontado — comportamento idêntico à HP física.
+     */
+    data class Idle(val startPc: Int = 0) : ProgramState()
 
     /**
      * Modo de edição (PRGM ativo).

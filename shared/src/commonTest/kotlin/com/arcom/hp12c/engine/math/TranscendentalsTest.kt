@@ -1,4 +1,4 @@
-package com.arcom.hp12c.engine.math
+package br.com.alyssonmyller.calculus.engine.math
 
 import kotlin.test.Test
 import kotlin.test.assertEquals

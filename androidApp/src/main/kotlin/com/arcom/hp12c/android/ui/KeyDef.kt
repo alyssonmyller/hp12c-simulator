@@ -1,7 +1,8 @@
-package com.arcom.hp12c.android.ui
+package br.com.alyssonmyller.calculus.android.ui
 
-import com.arcom.hp12c.engine.event.Event
-import com.arcom.hp12c.engine.state.RegisterId
+import br.com.alyssonmyller.calculus.engine.event.Event
+import br.com.alyssonmyller.calculus.engine.state.RegisterId
+import br.com.alyssonmyller.calculus.engine.event.Event.AlgebraicMode
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Estado de modificação da UI
@@ -403,3 +404,18 @@ internal val KEY_ROWS_LANDSCAPE: List<List<KeyDef>> = listOf(
 
 // alias para compatibilidade com código que usa KEY_ROWS
 internal val KEY_ROWS: List<List<KeyDef>> = KEY_ROWS_PORTRAIT
+
+/**
+ * KeyDefs extras que existem apenas para o lookup de f/g shift mas NÃO são
+ * renderizadas em nenhuma linha do teclado.
+ *
+ * Caso: tecla "EEX" aparece como label principal no layout landscape
+ * (HP12Key "EEX"/"ALG"/"ΔDYS"), mas nos KEY_ROWS ela só existe como
+ * fLabel de "CHS". Adicionamos aqui para que findKeyDefByLabel("EEX")
+ * resolva corretamente f+EEX → Event.AlgebraicMode.Toggle.
+ */
+internal val KEY_DEFS_LOOKUP_ONLY: List<KeyDef> = listOf(
+    KeyDef("EEX", "ALG", "ΔDYS",
+        event  = Event.Entry.Eex,
+        fEvent = Event.AlgebraicMode.Toggle),
+)

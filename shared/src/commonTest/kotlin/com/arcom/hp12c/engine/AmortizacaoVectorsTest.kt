@@ -1,14 +1,14 @@
-package com.arcom.hp12c.engine
+package br.com.alyssonmyller.calculus.engine
 
-import com.arcom.hp12c.engine.event.Event
-import com.arcom.hp12c.engine.state.CalculatorState
-import com.arcom.hp12c.engine.state.DisplayFormat
-import com.arcom.hp12c.engine.state.NumericSeparator
-import com.arcom.hp12c.testing.AmortizacaoOperationJson
-import com.arcom.hp12c.testing.AmortizacaoVectorJson
-import com.arcom.hp12c.testing.AmortizacaoVectorsFile
-import com.arcom.hp12c.testing.VectorsJson
-import com.arcom.hp12c.testing.readTestResource
+import br.com.alyssonmyller.calculus.engine.event.Event
+import br.com.alyssonmyller.calculus.engine.state.CalculatorState
+import br.com.alyssonmyller.calculus.engine.state.DisplayFormat
+import br.com.alyssonmyller.calculus.engine.state.NumericSeparator
+import br.com.alyssonmyller.calculus.testing.AmortizacaoOperationJson
+import br.com.alyssonmyller.calculus.testing.AmortizacaoVectorJson
+import br.com.alyssonmyller.calculus.testing.AmortizacaoVectorsFile
+import br.com.alyssonmyller.calculus.testing.VectorsJson
+import br.com.alyssonmyller.calculus.testing.readTestResource
 import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals

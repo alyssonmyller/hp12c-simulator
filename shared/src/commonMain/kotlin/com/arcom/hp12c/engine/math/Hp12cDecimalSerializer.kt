@@ -1,4 +1,4 @@
-package com.arcom.hp12c.engine.math
+package br.com.alyssonmyller.calculus.engine.math
 
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.descriptors.PrimitiveKind

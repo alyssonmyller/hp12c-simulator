@@ -1,13 +1,13 @@
-package com.arcom.hp12c.android
+package br.com.alyssonmyller.calculus.android
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.arcom.hp12c.android.ui.Hp12cSkin
-import com.arcom.hp12c.android.ui.Hp12cSkins
-import com.arcom.hp12c.engine.CalculatorEngine
-import com.arcom.hp12c.engine.event.Event
-import com.arcom.hp12c.engine.state.CalculatorState
-import com.arcom.hp12c.engine.state.ProgramState
+import br.com.alyssonmyller.calculus.android.ui.Hp12cSkin
+import br.com.alyssonmyller.calculus.android.ui.Hp12cSkins
+import br.com.alyssonmyller.calculus.engine.CalculatorEngine
+import br.com.alyssonmyller.calculus.engine.event.Event
+import br.com.alyssonmyller.calculus.engine.state.CalculatorState
+import br.com.alyssonmyller.calculus.engine.state.ProgramState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow

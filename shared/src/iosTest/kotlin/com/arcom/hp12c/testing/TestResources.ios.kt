@@ -1,4 +1,4 @@
-package com.arcom.hp12c.testing
+package br.com.alyssonmyller.calculus.testing
 
 /**
  * Stub iOS de [readTestResource]. A Fase 4 vai substituir este corpo por:

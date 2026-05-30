@@ -2,17 +2,19 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <application
-        android:name=".Hp12cApplication"
+        android:name=".android.Hp12cApplication"
         android:allowBackup="true"
-        android:label="HP 12C"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="Calculus - HP12C Platinum Simulator"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
 
         <activity
-            android:name=".MainActivity"
+            android:name=".android.MainActivity"
             android:exported="true"
             android:screenOrientation="landscape"
-            android:label="HP 12C">
+            android:label="Calculus - HP12C Platinum Simulator">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

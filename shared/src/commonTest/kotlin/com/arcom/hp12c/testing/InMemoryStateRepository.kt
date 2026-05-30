@@ -1,7 +1,7 @@
-package com.arcom.hp12c.testing
+package br.com.alyssonmyller.calculus.testing
 
-import com.arcom.hp12c.engine.persistence.StateRepository
-import com.arcom.hp12c.engine.state.CalculatorState
+import br.com.alyssonmyller.calculus.engine.persistence.StateRepository
+import br.com.alyssonmyller.calculus.engine.state.CalculatorState
 
 /**
  * Implementação de teste de [StateRepository]: guarda o estado em memória.

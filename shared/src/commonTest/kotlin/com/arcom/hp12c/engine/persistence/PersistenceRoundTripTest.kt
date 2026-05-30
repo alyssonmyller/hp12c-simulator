@@ -1,14 +1,14 @@
-package com.arcom.hp12c.engine.persistence
+package br.com.alyssonmyller.calculus.engine.persistence
 
-import com.arcom.hp12c.engine.CalculatorEngine
-import com.arcom.hp12c.engine.event.Event
-import com.arcom.hp12c.engine.state.CalculatorState
-import com.arcom.hp12c.engine.state.ProgramMemory
-import com.arcom.hp12c.engine.state.ProgramState
-import com.arcom.hp12c.engine.state.ProgramStep
-import com.arcom.hp12c.engine.state.ProgramTarget
-import com.arcom.hp12c.engine.state.TvmMode
-import com.arcom.hp12c.testing.InMemoryStateRepository
+import br.com.alyssonmyller.calculus.engine.CalculatorEngine
+import br.com.alyssonmyller.calculus.engine.event.Event
+import br.com.alyssonmyller.calculus.engine.state.CalculatorState
+import br.com.alyssonmyller.calculus.engine.state.ProgramMemory
+import br.com.alyssonmyller.calculus.engine.state.ProgramState
+import br.com.alyssonmyller.calculus.engine.state.ProgramStep
+import br.com.alyssonmyller.calculus.engine.state.ProgramTarget
+import br.com.alyssonmyller.calculus.engine.state.TvmMode
+import br.com.alyssonmyller.calculus.testing.InMemoryStateRepository
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -107,14 +107,14 @@ class PersistenceRoundTripTest {
         var state = CalculatorEngine.InitialState
         state = engine.reduce(state, Event.Entry.Digit(7))
         state = engine.reduce(state, Event.Entry.Digit(7))
-        state = engine.reduce(state, Event.Memory.Store(com.arcom.hp12c.engine.state.RegisterId.R3))
+        state = engine.reduce(state, Event.Memory.Store(br.com.alyssonmyller.calculus.engine.state.RegisterId.R3))
 
         val normalized = engine.normalizeForPersistence(state)
         val json       = encodeState(normalized)
         val restored   = decodeState(json)
 
         assertNotNull(restored)
-        assertEquals("77", restored.memory[com.arcom.hp12c.engine.state.RegisterId.R3].toString())
+        assertEquals("77", restored.memory[br.com.alyssonmyller.calculus.engine.state.RegisterId.R3].toString())
     }
 
     // ── Round-trip com pilha não-trivial ────────────────────────────────────
@@ -184,8 +184,8 @@ class PersistenceRoundTripTest {
         val steps = listOf(
             ProgramStep.KeyStep("ADD"),
             ProgramStep.Goto(ProgramTarget.LineTarget(5)),
-            ProgramStep.Label(com.arcom.hp12c.engine.state.ProgramLabel.AlphaLabel('A')),
-            ProgramStep.Conditional(com.arcom.hp12c.engine.state.ConditionalTest.XEqZero),
+            ProgramStep.Label(br.com.alyssonmyller.calculus.engine.state.ProgramLabel.AlphaLabel('A')),
+            ProgramStep.Conditional(br.com.alyssonmyller.calculus.engine.state.ConditionalTest.XEqZero),
             ProgramStep.Return,
             ProgramStep.Pause,
         )
@@ -199,7 +199,7 @@ class PersistenceRoundTripTest {
         assertNotNull(restored)
         assertEquals(steps, restored.programMemory.steps, "todos os tipos de ProgramStep devem round-trip")
         // programState nunca aparece no JSON (é @Transient)
-        assertEquals(ProgramState.Idle, restored.programState, "programState deve ser Idle após decode")
+        assertEquals(ProgramState.Idle(), restored.programState, "programState deve ser Idle após decode")
     }
 
     @Test

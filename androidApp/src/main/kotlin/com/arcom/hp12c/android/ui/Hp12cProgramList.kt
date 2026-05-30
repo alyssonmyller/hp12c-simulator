@@ -1,4 +1,4 @@
-package com.arcom.hp12c.android.ui
+package br.com.alyssonmyller.calculus.android.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -18,13 +18,13 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.arcom.hp12c.engine.state.ConditionalTest
-import com.arcom.hp12c.engine.state.ProgramKeyCode
-import com.arcom.hp12c.engine.state.ProgramLabel
-import com.arcom.hp12c.engine.state.ProgramMemory
-import com.arcom.hp12c.engine.state.ProgramStep
-import com.arcom.hp12c.engine.state.ProgramTarget
-import com.arcom.hp12c.engine.state.RegisterId
+import br.com.alyssonmyller.calculus.engine.state.ConditionalTest
+import br.com.alyssonmyller.calculus.engine.state.ProgramKeyCode
+import br.com.alyssonmyller.calculus.engine.state.ProgramLabel
+import br.com.alyssonmyller.calculus.engine.state.ProgramMemory
+import br.com.alyssonmyller.calculus.engine.state.ProgramStep
+import br.com.alyssonmyller.calculus.engine.state.ProgramTarget
+import br.com.alyssonmyller.calculus.engine.state.RegisterId
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Composable principal

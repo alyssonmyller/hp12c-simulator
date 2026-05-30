@@ -1,8 +1,8 @@
-package com.arcom.hp12c.engine
+package br.com.alyssonmyller.calculus.engine
 
-import com.arcom.hp12c.engine.event.Event
-import com.arcom.hp12c.engine.state.CalculatorState
-import com.arcom.hp12c.engine.state.NumericSeparator
+import br.com.alyssonmyller.calculus.engine.event.Event
+import br.com.alyssonmyller.calculus.engine.state.CalculatorState
+import br.com.alyssonmyller.calculus.engine.state.NumericSeparator
 
 /**
  * Contrato público da engine HP 12C. Um reducer puro — dada um `CalculatorState` e um

@@ -1,4 +1,4 @@
-package com.arcom.hp12c.engine.math
+package br.com.alyssonmyller.calculus.engine.math
 
 /**
  * Fachada das funções transcendentes `ln`, `exp`, `pow` e `sqrt` sobre [Hp12cDecimal].

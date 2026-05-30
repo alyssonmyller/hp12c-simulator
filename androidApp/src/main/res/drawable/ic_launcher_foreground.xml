@@ -1,0 +1,37 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Dark grey rounded square (main icon body) -->
+    <path
+        android:fillColor="#2C2E33"
+        android:pathData="M22,22h64a6,6 0,0 1 6,6v64a6,6 0,0 1 -6,6h-64a6,6 0,0 1 -6,-6v-64a6,6 0,0 1 6,-6z" />
+
+    <!-- "fx" symbol (simplified approximation) -->
+    <!-- 'f' -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M58.5,28c-3.5,0 -5.5,2 -6.5,5.5l-1.5,6.5h-4l-1,3h4l-3.5,14c-1.5,6 0.5,9 4,9c2.5,0 4.5,-1.5 5.5,-4l1,-3c-0.5,1.5 -1.5,2.5 -2.5,2.5c-1.5,0 -2,-1.5 -1,-5.5l3.5,-13h5l1,-3h-5l1.5,-6.5c1,-3.5 2,-5 4.5,-5c1,0 2,0.5 2.5,1l1,-3c-1,-1 -2.5,-1.5 -4.5,-1.5z" />
+    <!-- 'x' subscript -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M65,48l2,5l2,-5h2l-3,7l3,7h-2l-2,-5l-2,5h-2l3,-7l-3,-7z" />
+
+    <!-- "CALCULUS" text (stylized italic approximation) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M26,62l2.5,9h3.5l-0.5,-1.5h-1.5l-2,-7h4l0.5,1.5h1.5l-0.5,-3h-7.5z M35,62l-2.5,9h5l0.5,-1.5h-3l2,-7z M42,65c0,-2 -1,-3 -3,-3h-3l-2.5,9h3c2,0 3,-1 3.5,-3l-1.5,0c-0.5,1 -1,1.5 -2,1.5h-1.5l1.5,-5.5h1.5c1,0 1.5,0.5 1.5,1z M48,62l-2.5,9h3.5l0.5,-1.5h-1.5l-2,-7z M56,62l-2.5,9h3.5l2.5,-9z M61,62l-2.5,9h5l0.5,-1.5h-3l2,-7z M68,62l-2.5,9h3.5l2.5,-9z M76,68c0,2 -1,3 -3,3h-3l2.5,-9h3c2,0 1,1 1,3l-1.5,0c0,-1 -0.5,-1.5 -1.5,-1.5h-1l-1.5,5.5h1c1,0 1.5,-0.5 1.5,-1.5z" />
+
+    <!-- Light grey bar at bottom -->
+    <path
+        android:fillColor="#D1D1D1"
+        android:pathData="M25,82h58a4,4 0,0 1 0,8h-58a4,4 0,0 1 0,-8z" />
+
+    <!-- Text inside bar (simplified dots/lines to represent "HP12C PLATINUM") -->
+    <path
+        android:fillColor="#2C2E33"
+        android:pathData="M40,84h1v4h-1z M42,84h2v2h-2v2h2v-2h-2z M45,84h1l1,4h-1z M48,84h2v1h-1v1h1v1h-1v1h2z M51,84h2v1h-2v1h1v1h-1v1z M58,84h2v1h-2v3h1v-1h1v1h-2z M61,84h1v4h-1z M63,84h1l1,4h-1z M66,84h2v1h-2v3h-1v-4h1z M68,84h1v4h-1z M70,84h1l1,4h-1z M73,84h1v4h-1z" />
+
+</vector>
