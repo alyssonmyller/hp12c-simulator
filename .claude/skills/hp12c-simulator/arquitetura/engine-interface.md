@@ -43,7 +43,7 @@ shared/src/commonMain/kotlin/com/arcom/hp12c/
 └── commonTest/...
 ```
 
-Nome de pacote: `com.arcom.hp12c` (arcom.com.br é o domínio do autor). Prefixo `Hp12c` é usado onde a ambiguidade com tipos de `kotlin.math` poderia causar confusão (`Hp12cError`, `Hp12cDecimal`).
+Nome de pacote: `br.com.alyssonmyller.calculus` (arcom.com.br é o domínio do autor). Prefixo `Hp12c` é usado onde a ambiguidade com tipos de `kotlin.math` poderia causar confusão (`Hp12cError`, `Hp12cDecimal`).
 
 ## 3. Modelos de dados
 
