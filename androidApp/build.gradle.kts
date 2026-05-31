@@ -9,7 +9,7 @@ android {
     compileSdk = libs.versions.compileSdk.get().toInt()
 
     defaultConfig {
-        applicationId = "br.com.alyssonmyller.calculus"
+        applicationId = "br.com.alyssonmyller.calculus.hp12c"
         minSdk        = libs.versions.minSdk.get().toInt()
         targetSdk     = libs.versions.targetSdk.get().toInt()
         versionCode   = 1
