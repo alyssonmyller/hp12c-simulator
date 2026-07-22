@@ -9,8 +9,8 @@ jvmTarget           = "17"
 
 # Android
 minSdk              = "24"    # Android 7.0 — ~99% dos aparelhos em 2026
-compileSdk          = "35"
-targetSdk           = "35"
+compileSdk          = "36"
+targetSdk           = "36"
 
 # Kotlin ecosystem
 kotlinxSerialization = "1.7.3"
